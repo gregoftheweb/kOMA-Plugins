@@ -36,6 +36,7 @@ Origin: store (KDE Store), git (komaplugin add), clone (komaplugin clone),
         local (~/.local, hand or dev install),
         package (third-party distro package), kde (ships with KDE).
 """
+
 import argparse
 import json
 import os
@@ -54,16 +55,21 @@ CONFIG_HOME = Path(os.environ.get("XDG_CONFIG_HOME") or HOME / ".config")
 
 # type -> (label, kpackage type, data subdir, Qt plugin subdir for compiled ones)
 TYPES = {
-    "widget":          ("Widgets",          "Plasma/Applet",       "plasma/plasmoids", "plasma/applets"),
-    "kwin-script":     ("KWin scripts",     "KWin/Script",         "kwin/scripts",     None),
-    "effect":          ("Effects",          "KWin/Effect",         "kwin/effects",     "kwin/effects/plugins"),
-    "decoration":      ("Window decorations", "KWin/Decoration",   "kwin/decorations", "org.kde.kdecoration3"),
-    "wallpaper":       ("Wallpaper plugins", "Plasma/Wallpaper",   "plasma/wallpapers", None),
-    "window-switcher": ("Window switchers",  "KWin/WindowSwitcher", "kwin/tabbox",     None),
+    "widget": ("Widgets", "Plasma/Applet", "plasma/plasmoids", "plasma/applets"),
+    "kwin-script": ("KWin scripts", "KWin/Script", "kwin/scripts", None),
+    "effect": ("Effects", "KWin/Effect", "kwin/effects", "kwin/effects/plugins"),
+    "decoration": ("Window decorations", "KWin/Decoration", "kwin/decorations", "org.kde.kdecoration3"),
+    "wallpaper": ("Wallpaper plugins", "Plasma/Wallpaper", "plasma/wallpapers", None),
+    "window-switcher": ("Window switchers", "KWin/WindowSwitcher", "kwin/tabbox", None),
 }
-KNSRC = {"widget": "plasmoids.knsrc", "kwin-script": "kwinscripts.knsrc",
-         "effect": "kwineffect.knsrc", "decoration": "window-decorations.knsrc",
-         "wallpaper": "wallpaperplugin.knsrc", "window-switcher": "kwinswitcher.knsrc"}
+KNSRC = {
+    "widget": "plasmoids.knsrc",
+    "kwin-script": "kwinscripts.knsrc",
+    "effect": "kwineffect.knsrc",
+    "decoration": "window-decorations.knsrc",
+    "wallpaper": "wallpaperplugin.knsrc",
+    "window-switcher": "kwinswitcher.knsrc",
+}
 KPACKAGE_TO_TYPE = {v[1]: k for k, v in TYPES.items()}
 STATE_DIR = DATA_HOME / "komaplugin"
 SOURCES = STATE_DIR / "sources.json"
@@ -75,7 +81,7 @@ KDE_GROUPS = {"plasma", "kf6", "kde-applications", "kde-system", "kde-utilities"
 
 def run(cmd, timeout=10):
     try:
-        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout).stdout.strip()
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False).stdout.strip()
     except (OSError, subprocess.SubprocessError):
         return ""
 
@@ -105,37 +111,59 @@ def qt_plugin_dir():
 
 # ---- metadata ------------------------------------------------------------
 
+
 def _cbor(b, i):
     """Minimal CBOR decoder, enough for Qt 6 plugin metadata."""
-    ib = b[i]; mt, ai = ib >> 5, ib & 31; i += 1
-    if ai < 24: val = ai
-    elif ai == 24: val = b[i]; i += 1
-    elif ai == 25: val = struct.unpack(">H", b[i:i + 2])[0]; i += 2
-    elif ai == 26: val = struct.unpack(">I", b[i:i + 4])[0]; i += 4
-    elif ai == 27: val = struct.unpack(">Q", b[i:i + 8])[0]; i += 8
-    elif ai == 31: val = None
-    else: raise ValueError("bad cbor")
-    if mt == 0: return val, i
-    if mt == 1: return -1 - val, i
+    ib = b[i]
+    mt, ai = ib >> 5, ib & 31
+    i += 1
+    if ai < 24:
+        val = ai
+    elif ai == 24:
+        val = b[i]
+        i += 1
+    elif ai == 25:
+        val = struct.unpack(">H", b[i : i + 2])[0]
+        i += 2
+    elif ai == 26:
+        val = struct.unpack(">I", b[i : i + 4])[0]
+        i += 4
+    elif ai == 27:
+        val = struct.unpack(">Q", b[i : i + 8])[0]
+        i += 8
+    elif ai == 31:
+        val = None
+    else:
+        raise ValueError("bad cbor")
+    if mt == 0:
+        return val, i
+    if mt == 1:
+        return -1 - val, i
     if mt in (2, 3):
         if val is None:
             parts = []
             while b[i] != 0xFF:
-                p, i = _cbor(b, i); parts.append(p)
+                p, i = _cbor(b, i)
+                parts.append(p)
             return (b"" if mt == 2 else "").join(parts), i + 1
-        s = b[i:i + val]
+        s = b[i : i + val]
         return (s if mt == 2 else s.decode("utf-8", "replace")), i + val
     if mt == 4:
         out = []
         while (len(out) < val) if val is not None else b[i] != 0xFF:
-            x, i = _cbor(b, i); out.append(x)
+            x, i = _cbor(b, i)
+            out.append(x)
         return out, (i if val is not None else i + 1)
     if mt == 5:
         out, n = {}, 0
         while (n < val) if val is not None else b[i] != 0xFF:
-            k, i = _cbor(b, i); v, i = _cbor(b, i); out[k] = v; n += 1
+            k, i = _cbor(b, i)
+            v, i = _cbor(b, i)
+            out[k] = v
+            n += 1
         return out, (i if val is not None else i + 1)
-    if mt == 6: return _cbor(b, i)
+    if mt == 6:
+        return _cbor(b, i)
     if mt == 7:
         return {20: False, 21: True}.get(ai), i
     raise ValueError("bad cbor")
@@ -174,13 +202,19 @@ def json_metadata(pkg_dir):
             if "=" in line and not line.startswith("#"):
                 k, v = line.split("=", 1)
                 md[k.strip()] = v.strip()
-        return {"KPlugin": {"Name": md.get("Name"), "Description": md.get("Comment"),
-                            "Version": md.get("X-KDE-PluginInfo-Version"),
-                            "Icon": md.get("Icon")}}
+        return {
+            "KPlugin": {
+                "Name": md.get("Name"),
+                "Description": md.get("Comment"),
+                "Version": md.get("X-KDE-PluginInfo-Version"),
+                "Icon": md.get("Icon"),
+            }
+        }
     return {}
 
 
 # ---- config, store registry, package owners --------------------------------
+
 
 def read_kconfig(path):
     groups, cur = {}, None
@@ -188,8 +222,8 @@ def read_kconfig(path):
         lines = path.read_text(errors="replace").splitlines()
     except OSError:
         return groups
-    for line in lines:
-        line = line.strip()
+    for raw in lines:
+        line = raw.strip()
         if line.startswith("[") and line.endswith("]"):
             cur = groups.setdefault(line[1:-1], {})
         elif cur is not None and "=" in line and not line.startswith("#"):
@@ -208,10 +242,14 @@ def store_registry():
         except ET.ParseError:
             continue
         for st in root.iter("stuff"):
-            entry = {"storeId": st.findtext("id"), "storeName": st.findtext("name"),
-                     "version": st.findtext("version") or None,
-                     "releaseDate": st.findtext("releasedate"),
-                     "homepage": st.findtext("homepage"), "catalog": f.stem}
+            entry = {
+                "storeId": st.findtext("id"),
+                "storeName": st.findtext("name"),
+                "version": st.findtext("version") or None,
+                "releaseDate": st.findtext("releasedate"),
+                "homepage": st.findtext("homepage"),
+                "catalog": f.stem,
+            }
             for inst in st.iter("installedfile"):
                 p = (inst.text or "").rstrip("*").rstrip("/")
                 if p:
@@ -225,7 +263,7 @@ def package_owners(paths):
     if not paths or not shutil.which("pacman"):
         return {p: (None, "package") for p in paths}
     owners = {}
-    out = subprocess.run(["pacman", "-Qo", *paths], capture_output=True, text=True).stdout
+    out = subprocess.run(["pacman", "-Qo", *paths], capture_output=True, text=True, check=False).stdout
     for line in out.splitlines():
         m = re.match(r"(.+) is owned by (\S+) ", line)
         if m:
@@ -270,8 +308,7 @@ print(JSON.stringify(c));
 
 
 def widget_placements():
-    out = run(["qdbus6", "org.kde.plasmashell", "/PlasmaShell",
-               "org.kde.PlasmaShell.evaluateScript", PLACEMENT_JS])
+    out = run(["qdbus6", "org.kde.plasmashell", "/PlasmaShell", "org.kde.PlasmaShell.evaluateScript", PLACEMENT_JS])
     try:
         return json.loads(out)
     except ValueError:
@@ -290,24 +327,32 @@ def kwin_effect_ids():
 
 # ---- discovery -----------------------------------------------------------
 
+
 def discover(include_kde):
     qt = qt_plugin_dir()
     store = store_registry()
     found = {}  # (type, id) -> record
 
-    def put(ptype, pid, path, md, compiled=False, scope="system"):
+    def put(ptype, pid, path, md, *, compiled=False, scope="system"):
         key = (ptype, pid)
         if key in found and found[key]["scope"] == "user":
             return  # user copy overrides the system one, as KDE does
         kp = md.get("KPlugin", {}) if isinstance(md, dict) else {}
         found[key] = {
-            "id": pid, "type": ptype, "typeLabel": TYPES[ptype][0],
-            "name": kp.get("Name") or pid, "version": kp.get("Version") or None,
-            "description": kp.get("Description") or "", "icon": kp.get("Icon") or "",
-            "category": kp.get("Category") or "", "authors": [a.get("Name") for a in kp.get("Authors", []) if isinstance(a, dict)],
+            "id": pid,
+            "type": ptype,
+            "typeLabel": TYPES[ptype][0],
+            "name": kp.get("Name") or pid,
+            "version": kp.get("Version") or None,
+            "description": kp.get("Description") or "",
+            "icon": kp.get("Icon") or "",
+            "category": kp.get("Category") or "",
+            "authors": [a.get("Name") for a in kp.get("Authors", []) if isinstance(a, dict)],
             "website": kp.get("Website") or "",
             "enabledByDefault": bool(kp.get("EnabledByDefault", False)),
-            "path": str(path), "compiled": compiled, "scope": scope,
+            "path": str(path),
+            "compiled": compiled,
+            "scope": scope,
         }
 
     for ptype, (_, _, sub, so_sub) in TYPES.items():
@@ -334,11 +379,21 @@ def discover(include_kde):
         for eid in kwin_effect_ids():
             if ("effect", eid) not in found:
                 found[("effect", eid)] = {
-                    "id": eid, "type": "effect", "typeLabel": TYPES["effect"][0],
+                    "id": eid,
+                    "type": "effect",
+                    "typeLabel": TYPES["effect"][0],
                     "name": eid.replace("kwin4_effect_", "").replace("_", " ").title(),
-                    "version": None, "description": "Built into KWin", "icon": "", "category": "",
-                    "authors": [], "website": "", "enabledByDefault": False,
-                    "path": "", "compiled": True, "scope": "builtin"}
+                    "version": None,
+                    "description": "Built into KWin",
+                    "icon": "",
+                    "category": "",
+                    "authors": [],
+                    "website": "",
+                    "enabledByDefault": False,
+                    "path": "",
+                    "compiled": True,
+                    "scope": "builtin",
+                }
 
     # origin
     system_paths = [Path(r["path"]) for r in found.values() if r["scope"] == "system"]
@@ -430,21 +485,26 @@ def actions_for(r):
 
 # ---- actions -------------------------------------------------------------
 
+
 class Refused(Exception):
     pass
 
 
 def shell_js(script):
-    out = subprocess.run(["qdbus6", "org.kde.plasmashell", "/PlasmaShell",
-                          "org.kde.PlasmaShell.evaluateScript", script],
-                         capture_output=True, text=True, timeout=20)
+    out = subprocess.run(
+        ["qdbus6", "org.kde.plasmashell", "/PlasmaShell", "org.kde.PlasmaShell.evaluateScript", script],
+        capture_output=True,
+        text=True,
+        timeout=20,
+        check=False,
+    )
     if out.returncode != 0:
         raise Refused("plasmashell is not reachable: " + (out.stderr.strip() or "no reply"))
     return out.stdout.strip()
 
 
 def kwin(*args):
-    subprocess.run(["qdbus6", "org.kde.KWin", *args], capture_output=True, text=True, timeout=20)
+    subprocess.run(["qdbus6", "org.kde.KWin", *args], capture_output=True, text=True, timeout=20, check=False)
 
 
 def kwrite(file, groups, key, value):
@@ -493,7 +553,7 @@ def place_widget(pid, restart=True):
     plasmashell is stopped. That runs as its own systemd job because this
     command may itself be a child of plasmashell (the kOMA Plugins popup).
     """
-    plan = [l.split() for l in shell_js(PLACE_JS % pid).splitlines() if l.strip()]
+    plan = [ln.split() for ln in shell_js(PLACE_JS % pid).splitlines() if ln.strip()]
     if not plan:
         return "already on every panel"
     if not restart:
@@ -502,9 +562,12 @@ def place_widget(pid, restart=True):
     writes = " && ".join(
         f"kwriteconfig6 --file plasma-org.kde.plasma.desktop-appletsrc --group Containments "
         f"--group {int(panel)} --group General --key AppletOrder {shlex_quote(order)}"
-        for panel, order in plan)
-    job = (f"sleep 1; systemctl --user stop plasma-plasmashell.service; {writes}; "
-           f"systemctl --user start plasma-plasmashell.service")
+        for panel, order in plan
+    )
+    job = (
+        f"sleep 1; systemctl --user stop plasma-plasmashell.service; {writes}; "
+        f"systemctl --user start plasma-plasmashell.service"
+    )
     subprocess.run(["systemd-run", "--user", "--quiet", "--collect", "bash", "-c", job], check=True)
     return f"placed on {len(plan)} panel(s) left of the system tray (panels restart for a moment)"
 
@@ -525,8 +588,11 @@ def set_kwin_plugin(r, on):
         kwin("/KWin", "reconfigure")
     if on:
         __import__("time").sleep(1)
-        method = ("/Effects", "org.kde.kwin.Effects.isEffectLoaded") if r["type"] == "effect" \
+        method = (
+            ("/Effects", "org.kde.kwin.Effects.isEffectLoaded")
+            if r["type"] == "effect"
             else ("/Scripting", "org.kde.kwin.Scripting.isScriptLoaded")
+        )
         if kwin_bool(*method, pid) is False:
             return "enabled, but KWin did not load it (check: journalctl --user -b | grep -i kwin)"
     return "enabled" if on else "disabled"
@@ -547,8 +613,11 @@ def do_disable(r):
     t = r["type"]
     if t == "widget":
         n = shell_js(UNPLACE_JS % r["id"])
-        return f"taken off {n} panel/desktop slot(s)" if n != "0" else \
-            "not on any panel or desktop (system tray items are managed in the tray's settings)"
+        return (
+            f"taken off {n} panel/desktop slot(s)"
+            if n != "0"
+            else "not on any panel or desktop (system tray items are managed in the tray's settings)"
+        )
     if t in ("kwin-script", "effect"):
         return set_kwin_plugin(r, False)
     if t in ("decoration", "window-switcher"):
@@ -588,7 +657,8 @@ def prune_store_registry(entry, path):
     root = tree.getroot()
     for st in list(root.iter("stuff")):
         files = [(i.text or "").rstrip("*").rstrip("/") for i in st.iter("installedfile")]
-        if st.findtext("id") == entry["storeId"] and any(path == x or path.startswith(x + "/") or x.startswith(path + "/") for x in files):
+        ours = any(path == x or path.startswith(x + "/") or x.startswith(path + "/") for x in files)
+        if st.findtext("id") == entry["storeId"] and ours:
             root.remove(st)
     shutil.copy2(f, f.with_name(f.name + ".bak"))
     tree.write(f, encoding="UTF-8", xml_declaration=True)
@@ -628,7 +698,7 @@ def do_browse(ptype):
     if not shutil.which("knewstuff-dialog6"):
         raise Refused("knewstuff-dialog6 is missing (package knewstuff)")
     # blocks until the store window closes, so callers can refresh afterwards
-    subprocess.run(["knewstuff-dialog6", knsrc])
+    subprocess.run(["knewstuff-dialog6", knsrc], check=False)
     return f"closed the KDE Store ({TYPES[ptype or 'widget'][0].lower()})"
 
 
@@ -668,8 +738,12 @@ def validate_package(pkg, ptype, pid):
 
 def kpackage_install(ptype, pkg, upgrade=False):
     kind = TYPES[ptype][1]
-    out = subprocess.run(["kpackagetool6", "--type", kind, "--upgrade" if upgrade else "--install", str(pkg)],
-                         capture_output=True, text=True)
+    out = subprocess.run(
+        ["kpackagetool6", "--type", kind, "--upgrade" if upgrade else "--install", str(pkg)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
     if out.returncode != 0:
         raise Refused("kpackagetool6: " + (out.stderr.strip() or out.stdout.strip()).splitlines()[-1])
 
@@ -681,14 +755,18 @@ def git_head(repo):
 def do_add(url, subpath, enable, yes):
     if not shutil.which("git"):
         raise Refused("git is not installed")
-    if not confirm(f"Plugins run as unsandboxed code with your user's access.\n"
-                   f"Install from {url}?", yes):
+    if not confirm(f"Plugins run as unsandboxed code with your user's access.\nInstall from {url}?", yes):
         return "cancelled"
     stage_root = Path(os.environ.get("XDG_CACHE_HOME") or HOME / ".cache") / "komaplugin" / "staging"
     stage_root.mkdir(parents=True, exist_ok=True)
     stage = stage_root / __import__("time").strftime("%Y%m%d-%H%M%S")
-    out = subprocess.run(["git", "clone", "--quiet", url, str(stage)], capture_output=True, text=True,
-                         env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
+    out = subprocess.run(
+        ["git", "clone", "--quiet", url, str(stage)],
+        capture_output=True,
+        text=True,
+        env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+        check=False,
+    )
     if out.returncode != 0:
         raise Refused("git clone failed: " + (out.stderr.strip().splitlines() or ["?"])[-1])
     try:
@@ -711,8 +789,13 @@ def do_add(url, subpath, enable, yes):
             shutil.rmtree(stage, ignore_errors=True)
     kpackage_install(ptype, checkout / rel)
     sources = load_sources()
-    sources[pid] = {"kind": "git", "url": url, "path": rel, "commit": git_head(checkout),
-                    "added": __import__("time").strftime("%Y-%m-%d %H:%M")}
+    sources[pid] = {
+        "kind": "git",
+        "url": url,
+        "path": rel,
+        "commit": git_head(checkout),
+        "added": __import__("time").strftime("%Y-%m-%d %H:%M"),
+    }
     save_sources(sources)
     name = md.get("KPlugin", {}).get("Name") or pid
     msg = f"installed {name} ({pid}) from git, switched off"
@@ -730,7 +813,7 @@ def do_clone(r, yes):
     taken = {x["id"] for x in discover(include_kde=True)}
     while new_id in taken:
         new_id, n = f"{user}.{short}{n}", n + 1
-    if not confirm(f"Copy {r['name']} to {new_id} (\"My {r['name']}\")?", yes):
+    if not confirm(f'Copy {r["name"]} to {new_id} ("My {r["name"]}")?', yes):
         return "cancelled"
     checkout = STATE_DIR / "src" / new_id
     if checkout.exists():
@@ -745,21 +828,35 @@ def do_clone(r, yes):
     mdf.write_text(json.dumps(md, indent=4, ensure_ascii=False) + "\n")
     kpackage_install(r["type"], checkout)
     sources = load_sources()
-    sources[new_id] = {"kind": "clone", "clonedFrom": r["id"], "path": ".",
-                       "added": __import__("time").strftime("%Y-%m-%d %H:%M")}
+    sources[new_id] = {
+        "kind": "clone",
+        "clonedFrom": r["id"],
+        "path": ".",
+        "added": __import__("time").strftime("%Y-%m-%d %H:%M"),
+    }
     save_sources(sources)
     return f"cloned to {new_id}; edit {checkout} then run: komaplugin reload {new_id}"
 
 
 def do_reload(r):
-    src = (load_sources().get(r["id"]) or {})
+    src = load_sources().get(r["id"]) or {}
     if not src:
         raise Refused(f"{r['name']} wasn't added with komaplugin add/clone; nothing to reload from")
     pkg = STATE_DIR / "src" / r["id"] / src.get("path", ".")
     kpackage_install(r["type"], pkg, upgrade=True)
     if r["type"] == "widget" and r["status"] == "active":
-        subprocess.run(["systemd-run", "--user", "--quiet", "--collect", "bash", "-c",
-                        "sleep 1; systemctl --user restart plasma-plasmashell.service"])
+        subprocess.run(
+            [
+                "systemd-run",
+                "--user",
+                "--quiet",
+                "--collect",
+                "bash",
+                "-c",
+                "sleep 1; systemctl --user restart plasma-plasmashell.service",
+            ],
+            check=False,
+        )
         return "reinstalled from source (panels restart for a moment)"
     if r["type"] in ("kwin-script", "effect") and r["status"] == "active":
         set_kwin_plugin(r, False)
@@ -776,14 +873,14 @@ def load_updates():
 
 def store_latest(store_id):
     import urllib.request
+
     req = urllib.request.Request(OCS_API + store_id, headers={"User-Agent": "komaplugin"})
     with urllib.request.urlopen(req, timeout=20) as resp:
         root = ET.fromstring(resp.read())
     content = root.find(".//content")
     if content is None:
         raise ValueError("not found on the store")
-    return {"version": (content.findtext("version") or "").strip(),
-            "changed": (content.findtext("changed") or "")[:10]}
+    return {"version": (content.findtext("version") or "").strip(), "changed": (content.findtext("changed") or "")[:10]}
 
 
 def store_is_newer(have_version, have_date, latest):
@@ -796,8 +893,14 @@ def store_is_newer(have_version, have_date, latest):
 
 def git_behind(checkout):
     env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
-    out = subprocess.run(["git", "-C", str(checkout), "fetch", "--quiet"], capture_output=True, text=True,
-                         env=env, timeout=60)
+    out = subprocess.run(
+        ["git", "-C", str(checkout), "fetch", "--quiet"],
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=60,
+        check=False,
+    )
     if out.returncode != 0:
         raise ValueError((out.stderr.strip().splitlines() or ["git fetch failed"])[-1])
     n = run(["git", "-C", str(checkout), "rev-list", "--count", "HEAD..@{u}"])
@@ -809,6 +912,7 @@ def git_behind(checkout):
 def do_refresh(quiet=False):
     """The only networked command. Results go to the cache; everything else reads it."""
     import time
+
     recs = discover(include_kde=False)
     items, errors = {}, []
     for r in recs:
@@ -818,15 +922,28 @@ def do_refresh(quiet=False):
                 latest = store_latest(st["storeId"])
                 have_v, have_d = st.get("version") or "", st.get("releaseDate") or ""
                 newer = store_is_newer(have_v, have_d, latest)
-                items[r["id"]] = {"kind": "store", "available": bool(newer), "name": r["name"],
-                                  "current": have_v or have_d, "latest": latest["version"] or latest["changed"],
-                                  "storeId": st["storeId"], "catalog": st["catalog"]}
+                items[r["id"]] = {
+                    "kind": "store",
+                    "available": bool(newer),
+                    "name": r["name"],
+                    "current": have_v or have_d,
+                    "latest": latest["version"] or latest["changed"],
+                    "storeId": st["storeId"],
+                    "catalog": st["catalog"],
+                }
             elif r["origin"] == "git":
                 checkout = STATE_DIR / "src" / r["id"]
                 n, log, latest = git_behind(checkout)
-                items[r["id"]] = {"kind": "git", "available": n > 0, "name": r["name"],
-                                  "current": git_head(checkout), "latest": latest,
-                                  "behind": n, "log": log, "url": (r.get("source") or {}).get("url")}
+                items[r["id"]] = {
+                    "kind": "git",
+                    "available": n > 0,
+                    "name": r["name"],
+                    "current": git_head(checkout),
+                    "latest": latest,
+                    "behind": n,
+                    "log": log,
+                    "url": (r.get("source") or {}).get("url"),
+                }
         except Exception as e:  # one bad plugin or a dropped connection must not stop the rest
             errors.append(f"{r['id']}: {e}")
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -851,8 +968,12 @@ def do_update(r, yes):
         raise Refused(f"{r['name']} has no update in the last check (run: komaplugin refresh)")
     if u["kind"] == "store":
         knsrc = u["catalog"] + ".knsrc"
-        subprocess.Popen(["knewstuff-dialog6", "--url", f"kns://{knsrc}/api.kde-look.org/{u['storeId']}", knsrc],
-                         start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.Popen(
+            ["knewstuff-dialog6", "--url", f"kns://{knsrc}/api.kde-look.org/{u['storeId']}", knsrc],
+            start_new_session=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
         return "opened in the KDE Store; click Update there"
     checkout = STATE_DIR / "src" / r["id"]
     if run(["git", "-C", str(checkout), "status", "--porcelain"]):
@@ -863,8 +984,12 @@ def do_update(r, yes):
     if not confirm(f"Update {r['name']} {u['current']} -> {u['latest']}?", yes):
         return "cancelled"
     before = git_head(checkout)
-    out = subprocess.run(["git", "-C", str(checkout), "merge", "--ff-only", "--quiet", "@{u}"],
-                         capture_output=True, text=True)
+    out = subprocess.run(
+        ["git", "-C", str(checkout), "merge", "--ff-only", "--quiet", "@{u}"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
     if out.returncode != 0:
         raise Refused("can't fast-forward (upstream history changed); remove and re-add it")
     src = load_sources()
@@ -878,7 +1003,7 @@ def do_update(r, yes):
                 raise Refused(f"the new version has a symlink ({p.name})")
         kpackage_install(r["type"], checkout / rel, upgrade=True)
     except Refused:
-        subprocess.run(["git", "-C", str(checkout), "reset", "--hard", "--quiet", before])
+        subprocess.run(["git", "-C", str(checkout), "reset", "--hard", "--quiet", before], check=False)
         kpackage_install(r["type"], checkout / rel, upgrade=True)
         raise
     src[r["id"]]["commit"] = git_head(checkout)
@@ -888,8 +1013,18 @@ def do_update(r, yes):
         cache["items"][r["id"]]["available"] = False
         UPDATES.write_text(json.dumps(cache, indent=1))
     if r["status"] == "active" and r["type"] == "widget":
-        subprocess.run(["systemd-run", "--user", "--quiet", "--collect", "bash", "-c",
-                        "sleep 1; systemctl --user restart plasma-plasmashell.service"])
+        subprocess.run(
+            [
+                "systemd-run",
+                "--user",
+                "--quiet",
+                "--collect",
+                "bash",
+                "-c",
+                "sleep 1; systemctl --user restart plasma-plasmashell.service",
+            ],
+            check=False,
+        )
         return f"updated to {git_head(checkout)} (panels restart for a moment)"
     if r["status"] == "active" and r["type"] in ("kwin-script", "effect"):
         set_kwin_plugin(r, False)
@@ -930,7 +1065,8 @@ def print_table(recs):
             print(("\n" if r is not recs[0] else "") + r["typeLabel"])
         ver = r["version"] or (r["store"] or {}).get("releaseDate") or ""
         src = r["origin"] + (f":{r['package']}" if r["package"] and r["origin"] == "package" else "")
-        print(f"  {dot[r['status']]} {r['name'][:34]:<34} {r['id'][:42]:<42} {ver[:12]:<12} {src:<18} {r['statusText']}")
+        name, pid = r["name"][:34], r["id"][:42]
+        print(f"  {dot[r['status']]} {name:<34} {pid:<42} {ver[:12]:<12} {src:<18} {r['statusText']}")
 
 
 def main():
@@ -943,15 +1079,17 @@ def main():
     p_stat = sub.add_parser("status", help="one plugin in detail")
     p_stat.add_argument("id")
     p_stat.add_argument("--json", action="store_true")
-    for name, helptext in (("enable", "turn a plugin on"), ("disable", "turn a plugin off"),
-                           ("use", "make a decoration or window switcher current"),
-                           ("remove", "turn off and move your copy aside")):
+    for name, helptext in (
+        ("enable", "turn a plugin on"),
+        ("disable", "turn a plugin off"),
+        ("use", "make a decoration or window switcher current"),
+        ("remove", "turn off and move your copy aside"),
+    ):
         sp = sub.add_parser(name, help=helptext)
         sp.add_argument("id")
         sp.add_argument("--yes", "-y", action="store_true", help="don't ask")
         if name == "enable":
-            sp.add_argument("--no-restart", action="store_true",
-                            help="widgets: don't restart panels to position it")
+            sp.add_argument("--no-restart", action="store_true", help="widgets: don't restart panels to position it")
     sp = sub.add_parser("browse", help="open the KDE Store for a plugin type")
     sp.add_argument("type", nargs="?", default="widget", choices=list(KNSRC))
     sp = sub.add_parser("add", help="install a plugin from a git repo")
@@ -967,8 +1105,10 @@ def main():
     sp.add_argument("--yes", "-y", action="store_true")
     sp = sub.add_parser("updates", help="what the last check found (no network)")
     sp.add_argument("--json", action="store_true")
-    for name, helptext in (("clone", "copy a plugin to your own id to edit"),
-                           ("reload", "reinstall a git/cloned plugin from its source")):
+    for name, helptext in (
+        ("clone", "copy a plugin to your own id to edit"),
+        ("reload", "reinstall a git/cloned plugin from its source"),
+    ):
         sp = sub.add_parser(name, help=helptext)
         sp.add_argument("id")
         sp.add_argument("--yes", "-y", action="store_true")
@@ -993,8 +1133,21 @@ def main():
             print()
         else:
             for r in recs:
-                for k in ("name", "id", "typeLabel", "status", "statusText", "version", "origin",
-                          "package", "path", "description", "authors", "website", "store"):
+                for k in (
+                    "name",
+                    "id",
+                    "typeLabel",
+                    "status",
+                    "statusText",
+                    "version",
+                    "origin",
+                    "package",
+                    "path",
+                    "description",
+                    "authors",
+                    "website",
+                    "store",
+                ):
                     if r.get(k):
                         print(f"{k:>11}: {r[k]}")
     else:

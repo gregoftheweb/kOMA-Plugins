@@ -10,7 +10,7 @@ kpackagetool6 --type Plasma/Applet --upgrade "$dir" >/dev/null 2>&1 \
   || kpackagetool6 --type Plasma/Applet --install "$dir"
 mkdir -p "$HOME/.local/bin"
 icons="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor/scalable/apps"
-mkdir -p "$icons" && cp "$dir/contents/icons/koma.svg" "$icons/koma-plugins.svg"
+mkdir -p "$icons" && cp "$dir/contents/icons/koma.svg" "$icons/com.columbiafoundry.komaplugins.svg"
 ln -sf "$dir/contents/code/komaplugin" "$HOME/.local/bin/komaplugin"
 # Update checks: the only network use, at login and then hourly (systemd user timer)
 units="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"

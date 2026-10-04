@@ -7,6 +7,8 @@
     (contents/code/komaplugin), run through Plasma's "executable" data engine.
     Everything here is local: no network calls.
 */
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
@@ -40,17 +42,17 @@ PlasmoidItem {
     switchWidth: Kirigami.Units.gridUnit * 16
     switchHeight: Kirigami.Units.gridUnit * 14
     toolTipMainText: "kOMA Plugins"
-    toolTipSubText: (errorCount > 0
-        ? errorCount + " plugin" + (errorCount > 1 ? "s" : "") + " failed to load"
-        : plugins.length + " add-ons, " + activeCount + " active")
-        + (updateCount > 0 ? "\n" + updateCount + " update" + (updateCount > 1 ? "s" : "") + " available" : "")
-    Plasmoid.icon: "koma-plugins"
+    toolTipSubText: (errorCount > 0 ? errorCount + " plugin" + (errorCount > 1 ? "s" : "") + " failed to load" : plugins.length + " add-ons, " + activeCount + " active") + (updateCount > 0 ? "\n" + updateCount + " update" + (updateCount > 1 ? "s" : "") + " available" : "")
+    Plasmoid.icon: "com.columbiafoundry.komaplugins"
     Plasmoid.status: errorCount > 0 ? PlasmaCore.Types.NeedsAttentionStatus : PlasmaCore.Types.ActiveStatus
 
-    function shellQuote(s) { return "'" + String(s).replace(/'/g, "'\\''") + "'" }
+    function shellQuote(s) {
+        return "'" + String(s).replace(/'/g, "'\\''") + "'"
+    }
 
     function refresh() {
-        if (loading) return
+        if (loading)
+            return
         loading = true
         var cmd = "python3 " + shellQuote(cli) + " list --json" + (showAll ? " --all" : "")
         runner.connectSource(cmd + " # " + Date.now())
@@ -63,19 +65,23 @@ PlasmoidItem {
         connectedSources: []
         onNewData: function (source, data) {
             disconnectSource(source)
-            try { root.checkedAt = JSON.parse(String(data.stdout || "{}")).checkedAt || "" } catch (e) {}
+            try {
+                root.checkedAt = JSON.parse(String(data.stdout || "{}")).checkedAt || ""
+            } catch (e) {}
         }
     }
 
     function checkedAtText() {
-        if (!checkedAt) return "not checked yet"
+        if (!checkedAt)
+            return "not checked yet"
         var d = new Date(checkedAt)
         return "last checked " + Qt.formatDateTime(d, d.toDateString() === new Date().toDateString() ? "h:mm AP" : "MMM d, h:mm AP")
     }
 
     // Every action is a CLI call that prints one line; busyKey marks what's running.
     function runCli(args, busyKey) {
-        if (busyId) return
+        if (busyId)
+            return
         busyId = busyKey
         confirmId = ""
         var cmd = "python3 " + shellQuote(cli) + " " + args.map(shellQuote).join(" ")
@@ -84,7 +90,8 @@ PlasmoidItem {
     // enable / disable / use / remove / clone / reload on one plugin
     function act(action, pluginId) {
         var args = [action, pluginId]
-        if (action !== "use" && action !== "reload") args.push("--yes")
+        if (action !== "use" && action !== "reload")
+            args.push("--yes")
         runCli(args, pluginId)
     }
 
@@ -97,7 +104,8 @@ PlasmoidItem {
             var err = String(data.stderr || "").trim()
             var out = String(data.stdout || "").trim()
             root.messageIsError = data["exit code"] !== 0
-            if (!root.messageIsError && root.showInstalledOnSuccess) root.page = "installed"
+            if (!root.messageIsError && root.showInstalledOnSuccess)
+                root.page = "installed"
             root.showInstalledOnSuccess = false
             root.message = (root.messageIsError ? err || out : out || err).replace(/^komaplugin: /, "")
             messageTimer.restart()
@@ -136,7 +144,8 @@ PlasmoidItem {
         triggeredOnStart: true
         onTriggered: root.refresh()
     }
-    onExpandedChanged: if (root.expanded) refresh()
+    onExpandedChanged: if (root.expanded)
+        refresh()
     onShowAllChanged: refresh()
 
     compactRepresentation: MouseArea {
@@ -163,7 +172,10 @@ PlasmoidItem {
         }
         Rectangle {
             visible: root.errorCount > 0 || root.updateCount > 0
-            anchors { right: parent.right; top: parent.top }
+            anchors {
+                right: parent.right
+                top: parent.top
+            }
             width: Math.max(height, badgeText.implicitWidth + Kirigami.Units.smallSpacing)
             height: Math.round(parent.height * 0.45)
             radius: height / 2
@@ -183,7 +195,7 @@ PlasmoidItem {
     fullRepresentation: PlasmaExtras.Representation {
         Layout.minimumWidth: Kirigami.Units.gridUnit * 24
         Layout.minimumHeight: Kirigami.Units.gridUnit * 20
-        Layout.preferredWidth: Kirigami.Units.gridUnit * 32
+        Layout.preferredWidth: Kirigami.Units.gridUnit * 34
         Layout.preferredHeight: Kirigami.Units.gridUnit * 28
         collapseMarginsHint: true
 
@@ -195,6 +207,8 @@ PlasmoidItem {
                     Layout.fillWidth: true
                     level: 1
                     text: "Manage Plugins"
+                    elide: Text.ElideRight
+                    Layout.minimumWidth: Math.min(implicitWidth, Kirigami.Units.gridUnit * 6)
                 }
                 PlasmaComponents.ToolButton {
                     text: "Installed"
@@ -217,61 +231,102 @@ PlasmoidItem {
                     checked: root.page === "updates"
                     onClicked: root.page = "updates"
                 }
-                Kirigami.Separator {
-                    Layout.fillHeight: true
-                    Layout.margins: Kirigami.Units.smallSpacing
-                    visible: root.page === "installed"
-                }
-                PlasmaComponents.ToolButton {
-                    visible: root.page === "installed"
-                    text: "Add-ons"
-                    checkable: true
-                    checked: !root.showAll
-                    onClicked: Plasmoid.configuration.showAll = false
-                }
-                PlasmaComponents.ToolButton {
-                    visible: root.page === "installed"
-                    text: "All"
-                    checkable: true
-                    checked: root.showAll
-                    onClicked: Plasmoid.configuration.showAll = true
-                }
                 PlasmaComponents.ToolButton {
                     icon.name: "view-refresh"
                     enabled: !root.loading
                     onClicked: root.refresh()
-                    PlasmaComponents.ToolTip { text: "Refresh" }
+                    PlasmaComponents.ToolTip {
+                        text: "Refresh"
+                    }
                 }
             }
         }
 
         Kirigami.InlineMessage {
             id: banner
-            anchors { left: parent.left; right: parent.right; top: parent.top; margins: Kirigami.Units.smallSpacing }
+            anchors {
+                left: parent.left
+                right: parent.right
+                top: parent.top
+                margins: Kirigami.Units.smallSpacing
+            }
             visible: root.message.length > 0
             type: root.messageIsError ? Kirigami.MessageType.Error : Kirigami.MessageType.Positive
             text: root.message
             showCloseButton: true
-            onVisibleChanged: if (!visible) root.message = ""
+            onVisibleChanged: if (!visible)
+                root.message = ""
         }
 
         UpdatesPage {
+            host: root
             visible: root.page === "updates"
-            anchors { left: parent.left; right: parent.right; bottom: parent.bottom
-                      top: banner.visible ? banner.bottom : parent.top }
+            anchors {
+                left: parent.left
+                right: parent.right
+                bottom: parent.bottom
+                top: banner.visible ? banner.bottom : parent.top
+            }
         }
 
         GetNewPage {
+            host: root
             visible: root.page === "getnew"
-            anchors { left: parent.left; right: parent.right; bottom: parent.bottom
-                      top: banner.visible ? banner.bottom : parent.top }
+            anchors {
+                left: parent.left
+                right: parent.right
+                bottom: parent.bottom
+                top: banner.visible ? banner.bottom : parent.top
+            }
+        }
+
+        RowLayout {  // Installed: which plugins to show
+            id: scopeRow
+            visible: root.page === "installed"
+            anchors {
+                left: parent.left
+                right: parent.right
+                top: banner.visible ? banner.bottom : parent.top
+                leftMargin: Kirigami.Units.largeSpacing
+                rightMargin: Kirigami.Units.largeSpacing
+                topMargin: Kirigami.Units.smallSpacing
+            }
+            PlasmaComponents.Label {
+                text: "Show"
+                opacity: 0.7
+            }
+            PlasmaComponents.ToolButton {
+                text: "Add-ons"
+                checkable: true
+                checked: !root.showAll
+                onClicked: Plasmoid.configuration.showAll = false
+                PlasmaComponents.ToolTip {
+                    text: "What you added: store, git, local and third-party packages"
+                }
+            }
+            PlasmaComponents.ToolButton {
+                text: "All"
+                checkable: true
+                checked: root.showAll
+                onClicked: Plasmoid.configuration.showAll = true
+                PlasmaComponents.ToolTip {
+                    text: "Also what ships with KDE"
+                }
+            }
+            Item {
+                Layout.fillWidth: true
+            }
         }
 
         PlasmaComponents.ScrollView {
             visible: root.page === "installed"
-            anchors { left: parent.left; right: parent.right; bottom: parent.bottom
-                      top: banner.visible ? banner.bottom : parent.top }
-            contentWidth: availableWidth - contentItem.leftMargin - contentItem.rightMargin
+            anchors {
+                left: parent.left
+                right: parent.right
+                bottom: parent.bottom
+                top: scopeRow.bottom
+            }
+            contentWidth: availableWidth - list.leftMargin - list.rightMargin
 
             contentItem: ListView {
                 id: list
@@ -284,8 +339,9 @@ PlasmoidItem {
                 spacing: Kirigami.Units.smallSpacing
                 section.property: "typeLabel"
                 section.delegate: Kirigami.ListSectionHeader {
+                    required property string section
                     width: ListView.view.width - ListView.view.leftMargin - ListView.view.rightMargin
-                    label: section
+                    text: section
                 }
 
                 PlasmaExtras.PlaceholderMessage {
@@ -311,9 +367,7 @@ PlasmoidItem {
                             implicitWidth: Kirigami.Units.smallSpacing * 2.5
                             implicitHeight: implicitWidth
                             radius: width / 2
-                            color: row.modelData.status === "active" ? Kirigami.Theme.highlightColor
-                                 : row.modelData.status === "error" ? Kirigami.Theme.negativeTextColor
-                                 : "transparent"
+                            color: row.modelData.status === "active" ? Kirigami.Theme.highlightColor : row.modelData.status === "error" ? Kirigami.Theme.negativeTextColor : "transparent"
                             border.width: row.modelData.status === "off" ? 1 : 0
                             border.color: Kirigami.Theme.disabledTextColor
                         }
@@ -322,10 +376,13 @@ PlasmoidItem {
                             Layout.preferredWidth: Kirigami.Units.iconSizes.medium
                             Layout.preferredHeight: Kirigami.Units.iconSizes.medium
                             source: row.modelData.icon || ({
-                                "widget": "plasma", "kwin-script": "application-x-javascript",
-                                "effect": "preferences-desktop-effects", "decoration": "preferences-system-windows",
-                                "wallpaper": "preferences-desktop-wallpaper", "window-switcher": "preferences-system-tabbox"
-                            })[row.modelData.type] || "preferences-plugin"
+                                    "widget": "plasma",
+                                    "kwin-script": "application-x-javascript",
+                                    "effect": "preferences-desktop-effects",
+                                    "decoration": "preferences-system-windows",
+                                    "wallpaper": "preferences-desktop-wallpaper",
+                                    "window-switcher": "preferences-system-tabbox"
+                                })[row.modelData.type] || "preferences-plugin"
                         }
 
                         ColumnLayout {
@@ -347,9 +404,7 @@ PlasmoidItem {
                             }
                             PlasmaComponents.Label {
                                 Layout.fillWidth: true
-                                text: row.modelData.statusText + "  ·  " + row.modelData.origin
-                                      + (row.modelData.update ? "  ·  update " + row.modelData.update.latest : "")
-                                      + (row.modelData.package && row.modelData.origin === "package" ? " (" + row.modelData.package + ")" : "")
+                                text: row.modelData.statusText + "  ·  " + row.modelData.origin + (row.modelData.update ? "  ·  update " + row.modelData.update.latest : "") + (row.modelData.package && row.modelData.origin === "package" ? " (" + row.modelData.package + ")" : "")
                                 color: row.modelData.status === "error" ? Kirigami.Theme.negativeTextColor : Kirigami.Theme.textColor
                                 opacity: row.modelData.status === "error" ? 1 : 0.7
                                 font: Kirigami.Theme.smallFont
@@ -375,60 +430,75 @@ PlasmoidItem {
                         }
 
                         RowLayout {  // actions
+                            id: actionRow
                             readonly property var acts: row.modelData.id === root.selfId ? [] : (row.modelData.actions || [])
-                            visible: root.busyId !== row.modelData.id && root.confirmId !== row.modelData.id
-                                     && (row.hovered || row.activeFocus) && acts.length > 0
+                            visible: root.busyId !== row.modelData.id && root.confirmId !== row.modelData.id && (row.hovered || row.activeFocus) && acts.length > 0
                             spacing: 0
                             PlasmaComponents.ToolButton {
-                                readonly property string act: parent.acts.filter(a => ["enable", "disable", "use"].indexOf(a) >= 0)[0] || ""
+                                id: primaryButton
+                                readonly property string act: actionRow.acts.filter(a => ["enable", "disable", "use"].indexOf(a) >= 0)[0] || ""
                                 visible: act !== ""
                                 enabled: root.busyId === ""
-                                text: ({ "enable": "Enable", "disable": "Disable", "use": "Use" })[act] || ""
-                                icon.name: ({ "enable": "list-add", "disable": "list-remove", "use": "dialog-ok-apply" })[act] || ""
+                                text: ({
+                                        "enable": "Enable",
+                                        "disable": "Disable",
+                                        "use": "Use"
+                                    })[act] || ""
+                                icon.name: ({
+                                        "enable": "list-add",
+                                        "disable": "list-remove",
+                                        "use": "dialog-ok-apply"
+                                    })[act] || ""
                                 onClicked: root.act(act, row.modelData.id)
                                 PlasmaComponents.ToolTip {
-                                    text: parent.act === "enable" && row.modelData.type === "widget"
-                                          ? "Place on every panel (panels restart for a moment)" : parent.text
+                                    text: primaryButton.act === "enable" && row.modelData.type === "widget" ? "Place on every panel (panels restart for a moment)" : primaryButton.text
                                 }
                             }
                             PlasmaComponents.ToolButton {
-                                visible: parent.acts.indexOf("update") >= 0
+                                visible: actionRow.acts.indexOf("update") >= 0
                                 enabled: root.busyId === ""
                                 icon.name: "update-none"
                                 text: "Update"
                                 onClicked: root.act("update", row.modelData.id)
                                 PlasmaComponents.ToolTip {
-                                    text: row.modelData.update && row.modelData.update.kind === "store"
-                                          ? "Open in the KDE Store to update" : "Update from git"
+                                    text: row.modelData.update && row.modelData.update.kind === "store" ? "Open in the KDE Store to update" : "Update from git"
                                 }
                             }
                             PlasmaComponents.ToolButton {
-                                visible: parent.acts.indexOf("reload") >= 0
+                                visible: actionRow.acts.indexOf("reload") >= 0
                                 enabled: root.busyId === ""
                                 icon.name: "view-refresh"
                                 onClicked: root.act("reload", row.modelData.id)
-                                PlasmaComponents.ToolTip { text: "Reinstall from its source folder" }
+                                PlasmaComponents.ToolTip {
+                                    text: "Reinstall from its source folder"
+                                }
                             }
                             PlasmaComponents.ToolButton {
-                                visible: parent.acts.indexOf("clone") >= 0
+                                visible: actionRow.acts.indexOf("clone") >= 0
                                 enabled: root.busyId === ""
                                 icon.name: "edit-copy"
                                 onClicked: root.act("clone", row.modelData.id)
-                                PlasmaComponents.ToolTip { text: "Clone to your own copy to edit" }
+                                PlasmaComponents.ToolTip {
+                                    text: "Clone to your own copy to edit"
+                                }
                             }
                             PlasmaComponents.ToolButton {
-                                visible: parent.acts.indexOf("remove") >= 0
+                                visible: actionRow.acts.indexOf("remove") >= 0
                                 enabled: root.busyId === ""
                                 icon.name: "edit-delete"
                                 onClicked: root.confirmId = row.modelData.id
-                                PlasmaComponents.ToolTip { text: "Remove" }
+                                PlasmaComponents.ToolTip {
+                                    text: "Remove"
+                                }
                             }
                         }
 
                         RowLayout {  // inline "really remove?"
                             visible: root.confirmId === row.modelData.id
                             spacing: Kirigami.Units.smallSpacing
-                            PlasmaComponents.Label { text: "Remove?" }
+                            PlasmaComponents.Label {
+                                text: "Remove?"
+                            }
                             PlasmaComponents.Button {
                                 text: "Remove"
                                 icon.name: "edit-delete"

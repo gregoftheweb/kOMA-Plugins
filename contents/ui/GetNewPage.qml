@@ -3,6 +3,8 @@
     store window, so installs are tracked like System Settings' "Get New"),
     and adding a plugin straight from a git repo.
 */
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
@@ -10,15 +12,42 @@ import org.kde.plasma.components as PlasmaComponents
 
 PlasmaComponents.ScrollView {
     id: page
+
+    // the PlasmoidItem from main.qml: state (busyId, updatable, ...) and runCli()
+    required property var host
     contentWidth: availableWidth
 
     readonly property var storeTypes: [
-        { type: "widget", label: "Widgets", icon: "plasma" },
-        { type: "kwin-script", label: "KWin scripts", icon: "application-x-javascript" },
-        { type: "effect", label: "Effects", icon: "preferences-desktop-effects" },
-        { type: "decoration", label: "Window decorations", icon: "preferences-system-windows" },
-        { type: "wallpaper", label: "Wallpaper plugins", icon: "preferences-desktop-wallpaper" },
-        { type: "window-switcher", label: "Window switchers", icon: "preferences-system-tabbox" }
+        {
+            type: "widget",
+            label: "Widgets",
+            icon: "plasma"
+        },
+        {
+            type: "kwin-script",
+            label: "KWin scripts",
+            icon: "application-x-javascript"
+        },
+        {
+            type: "effect",
+            label: "Effects",
+            icon: "preferences-desktop-effects"
+        },
+        {
+            type: "decoration",
+            label: "Window decorations",
+            icon: "preferences-system-windows"
+        },
+        {
+            type: "wallpaper",
+            label: "Wallpaper plugins",
+            icon: "preferences-desktop-wallpaper"
+        },
+        {
+            type: "window-switcher",
+            label: "Window switchers",
+            icon: "preferences-system-tabbox"
+        }
     ]
 
     ColumnLayout {
@@ -53,20 +82,27 @@ PlasmaComponents.ScrollView {
                     Layout.fillWidth: true
                     text: modelData.label
                     icon.name: modelData.icon
-                    enabled: root.busyId === ""
-                    onClicked: root.runCli(["browse", modelData.type], "browse:" + modelData.type)
+                    enabled: page.host.busyId === ""
+                    onClicked: page.host.runCli(["browse", modelData.type], "browse:" + modelData.type)
                     PlasmaComponents.BusyIndicator {
-                        anchors { right: parent.right; verticalCenter: parent.verticalCenter; rightMargin: Kirigami.Units.smallSpacing }
+                        anchors {
+                            right: parent.right
+                            verticalCenter: parent.verticalCenter
+                            rightMargin: Kirigami.Units.smallSpacing
+                        }
                         height: parent.height * 0.7
                         width: height
-                        visible: root.busyId === "browse:" + parent.modelData.type
+                        visible: page.host.busyId === "browse:" + parent.modelData.type
                         running: visible
                     }
                 }
             }
         }
 
-        Kirigami.Separator { Layout.fillWidth: true; Layout.topMargin: Kirigami.Units.largeSpacing }
+        Kirigami.Separator {
+            Layout.fillWidth: true
+            Layout.topMargin: Kirigami.Units.largeSpacing
+        }
 
         Kirigami.Heading {
             Layout.leftMargin: Kirigami.Units.largeSpacing
@@ -105,7 +141,7 @@ PlasmaComponents.ScrollView {
                     text: "Turn it on after installing"
                 }
                 PlasmaComponents.BusyIndicator {
-                    visible: root.busyId === "add"
+                    visible: page.host.busyId === "add"
                     running: visible
                     Layout.preferredHeight: add.height
                     Layout.preferredWidth: add.height
@@ -114,17 +150,21 @@ PlasmaComponents.ScrollView {
                     id: add
                     text: "Add"
                     icon.name: "list-add"
-                    enabled: url.text.trim().length > 0 && root.busyId === ""
+                    enabled: url.text.trim().length > 0 && page.host.busyId === ""
                     onClicked: {
                         var args = ["add", url.text.trim(), "--yes"]
-                        if (subpath.text.trim()) args.push("--path", subpath.text.trim())
-                        if (enableAfter.checked) args.push("--enable")
-                        root.showInstalledOnSuccess = true
-                        root.runCli(args, "add")
+                        if (subpath.text.trim())
+                            args.push("--path", subpath.text.trim())
+                        if (enableAfter.checked)
+                            args.push("--enable")
+                        page.host.showInstalledOnSuccess = true
+                        page.host.runCli(args, "add")
                     }
                 }
             }
         }
-        Item { Layout.fillHeight: true }
+        Item {
+            Layout.fillHeight: true
+        }
     }
 }

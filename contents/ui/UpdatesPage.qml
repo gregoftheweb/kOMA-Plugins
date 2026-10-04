@@ -3,6 +3,8 @@
     The check itself (komaplugin refresh) is the only networked step and runs
     from a systemd timer at login and hourly; "Check now" runs it on request.
 */
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
@@ -11,6 +13,9 @@ import org.kde.plasma.extras as PlasmaExtras
 
 ColumnLayout {
     id: page
+
+    // the PlasmoidItem from main.qml: state (busyId, updatable, ...) and runCli()
+    required property var host
     spacing: 0
 
     RowLayout {
@@ -18,12 +23,12 @@ ColumnLayout {
         Layout.margins: Kirigami.Units.largeSpacing
         PlasmaComponents.Label {
             Layout.fillWidth: true
-            text: root.checkedAtText() + "  ·  checks run at login and hourly"
+            text: page.host.checkedAtText() + "  ·  checks run at login and hourly"
             opacity: 0.7
             elide: Text.ElideRight
         }
         PlasmaComponents.BusyIndicator {
-            visible: root.busyId === "refresh" || root.busyId === "update-all"
+            visible: page.host.busyId === "refresh" || page.host.busyId === "update-all"
             running: visible
             Layout.preferredHeight: checkNow.height
             Layout.preferredWidth: checkNow.height
@@ -32,26 +37,26 @@ ColumnLayout {
             id: checkNow
             text: "Check now"
             icon.name: "view-refresh"
-            enabled: root.busyId === ""
-            onClicked: root.runCli(["refresh"], "refresh")
+            enabled: page.host.busyId === ""
+            onClicked: page.host.runCli(["refresh"], "refresh")
         }
         PlasmaComponents.Button {
-            visible: root.updatable.some(p => p.update.kind === "git")
+            visible: page.host.updatable.some(p => p.update.kind === "git")
             text: "Update all"
             icon.name: "update-none"
-            enabled: root.busyId === ""
-            onClicked: root.runCli(["update", "--all", "--yes"], "update-all")
+            enabled: page.host.busyId === ""
+            onClicked: page.host.runCli(["update", "--all", "--yes"], "update-all")
         }
     }
 
     PlasmaComponents.ScrollView {
         Layout.fillWidth: true
         Layout.fillHeight: true
-        contentWidth: availableWidth - contentItem.leftMargin - contentItem.rightMargin
+        contentWidth: availableWidth - list.leftMargin - list.rightMargin
 
         contentItem: ListView {
             id: list
-            model: root.updatable
+            model: page.host.updatable
             clip: true
             leftMargin: Kirigami.Units.smallSpacing
             rightMargin: Kirigami.Units.smallSpacing
@@ -84,10 +89,7 @@ ColumnLayout {
                         }
                         PlasmaComponents.Label {
                             Layout.fillWidth: true
-                            text: row.modelData.update.current + "  →  " + row.modelData.update.latest
-                                  + "  ·  " + (row.modelData.update.kind === "git"
-                                      ? row.modelData.update.behind + " new commit" + (row.modelData.update.behind > 1 ? "s" : "")
-                                      : "KDE Store")
+                            text: row.modelData.update.current + "  →  " + row.modelData.update.latest + "  ·  " + (row.modelData.update.kind === "git" ? row.modelData.update.behind + " new commit" + (row.modelData.update.behind > 1 ? "s" : "") : "KDE Store")
                             opacity: 0.7
                             font: Kirigami.Theme.smallFont
                             elide: Text.ElideRight
@@ -95,8 +97,7 @@ ColumnLayout {
                         PlasmaComponents.Label {  // what changed (git)
                             Layout.fillWidth: true
                             visible: text.length > 0
-                            text: (row.modelData.update.log || "").split("\n").map(l => "• " + l.replace(/^\S+ /, "")).join("\n")
-                                  .replace(/^• $/, "")
+                            text: (row.modelData.update.log || "").split("\n").map(l => "• " + l.replace(/^\S+ /, "")).join("\n").replace(/^• $/, "")
                             opacity: 0.7
                             font: Kirigami.Theme.smallFont
                             wrapMode: Text.WordWrap
@@ -105,17 +106,17 @@ ColumnLayout {
                         }
                     }
                     PlasmaComponents.BusyIndicator {
-                        visible: root.busyId === row.modelData.id
+                        visible: page.host.busyId === row.modelData.id
                         running: visible
                         Layout.preferredWidth: Kirigami.Units.iconSizes.medium
                         Layout.preferredHeight: Kirigami.Units.iconSizes.medium
                     }
                     PlasmaComponents.Button {
-                        visible: root.busyId !== row.modelData.id
-                        enabled: root.busyId === ""
+                        visible: page.host.busyId !== row.modelData.id
+                        enabled: page.host.busyId === ""
                         text: row.modelData.update.kind === "store" ? "Open in store" : "Update"
                         icon.name: row.modelData.update.kind === "store" ? "get-hot-new-stuff" : "update-none"
-                        onClicked: root.act("update", row.modelData.id)
+                        onClicked: page.host.act("update", row.modelData.id)
                     }
                 }
             }
