@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Install/upgrade kOMA Plugins from this folder and restart plasmashell
+# (through its systemd user service, so the session keeps managing it).
+set -e
+dir=$(cd "$(dirname "$0")/.." && pwd)
+kpackagetool6 --type Plasma/Applet --upgrade "$dir" 2>/dev/null || kpackagetool6 --type Plasma/Applet --install "$dir"
+systemctl --user restart plasma-plasmashell.service

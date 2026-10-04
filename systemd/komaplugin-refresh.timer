@@ -1,0 +1,10 @@
+[Unit]
+Description=kOMA Plugins update check, shortly after login and then hourly
+
+[Timer]
+OnStartupSec=2min
+OnUnitActiveSec=1h
+RandomizedDelaySec=2min
+
+[Install]
+WantedBy=timers.target

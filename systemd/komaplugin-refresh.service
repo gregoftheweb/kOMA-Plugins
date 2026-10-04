@@ -1,0 +1,7 @@
+[Unit]
+Description=kOMA Plugins: check the KDE Store and git for plugin updates
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/komaplugin refresh --quiet
+Nice=10

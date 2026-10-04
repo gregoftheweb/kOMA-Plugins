@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Install/upgrade kOMA Plugins, link the CLI, and place the widget on every
+# panel left of the system tray. Safe to re-run: panels that already have it
+# are left alone.
+#   install            install + place on panels (panels restart for a moment)
+#   install --no-place install/upgrade only
+set -euo pipefail
+dir=$(cd "$(dirname "$0")/.." && pwd)
+kpackagetool6 --type Plasma/Applet --upgrade "$dir" >/dev/null 2>&1 \
+  || kpackagetool6 --type Plasma/Applet --install "$dir"
+mkdir -p "$HOME/.local/bin"
+icons="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor/scalable/apps"
+mkdir -p "$icons" && cp "$dir/contents/icons/koma.svg" "$icons/koma-plugins.svg"
+ln -sf "$dir/contents/code/komaplugin" "$HOME/.local/bin/komaplugin"
+# Update checks: the only network use, at login and then hourly (systemd user timer)
+units="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
+mkdir -p "$units"
+cp "$dir/systemd/komaplugin-refresh.service" "$dir/systemd/komaplugin-refresh.timer" "$units/"
+systemctl --user daemon-reload
+systemctl --user enable --now komaplugin-refresh.timer >/dev/null 2>&1
+echo "kOMA Plugins installed; CLI linked at ~/.local/bin/komaplugin; update check timer on"
+[[ "${1:-}" == "--no-place" ]] || "$dir/contents/code/komaplugin" enable com.columbiafoundry.komaplugins --yes
