@@ -10,13 +10,13 @@ kOMA Plugins brings [Omarchy](https://omarchy.org)'s plugin manager to KDE Plasm
 - **Turn plugins on and off**: hover a row. Enabling a widget places it on every panel, left of the system tray. Decorations and window switchers get **Use**.
 - **Remove** asks first, turns the plugin off, and moves your copy to `~/.local/share/komaplugin/removed/` instead of deleting it. Plugins installed by your distro are left to your package manager.
 - **Get new**: KDE's store window for each plugin type, or **Add from git**: paste a repo URL and kOMA finds the plugin (also in subfolders like `package/`), checks it, and installs it switched off.
-- **Updates**: the panel icon shows a badge when updates are available. Git plugins update in place (with a rollback if the new version fails checks); store plugins open on their store page.
+- **Updates**: press **Update** to download and install a KDE Store update inside the widget. KDE tracks the installed version, and active widgets reload with a brief panel restart. Git plugins update in place (with a rollback if the new version fails checks); **Update git plugins** applies all pending git updates.
 - **Clone** any QML plugin to your own copy, edit it, and `komaplugin reload` it.
 - **Follows your theme**: the icon and status colors use your color scheme's highlight color.
 
 ## Privacy and network use
 
-kOMA Plugins only goes online for the update check, `komaplugin refresh`. A systemd user timer runs it 2 minutes after login and then once an hour; you can also press **Check now**. It asks the KDE Store API about plugins you installed from the store and runs `git fetch` for plugins you added from git. Results are cached, and the panel widget only ever reads that cache. Browsing the store or adding from git happens only when you ask.
+kOMA Plugins checks for updates with `komaplugin refresh`. A systemd user timer runs it 2 minutes after login and then once an hour; you can also press **Check now**. It asks the KDE Store API about plugins you installed from the store and runs `git fetch` for plugins you added from git. Results are cached, so listing plugins needs no network access. Downloading updates, browsing the store, or adding from git happens only when you ask.
 
 ## Requirements
 
@@ -28,12 +28,12 @@ kOMA Plugins only goes online for the update check, `komaplugin refresh`. A syst
 
 ## Install
 
-From the KDE Store: right-click the panel, **Add or Manage Widgets**, **Get New Widgets**, and search for "kOMA Plugins". The store install gives you the widget; for the `komaplugin` command on your PATH and the hourly update check, install from source as below.
+KDE Store publication is planned. The release `.plasmoid` can be installed locally with `kpackagetool6 --type Plasma/Applet --install <file.plasmoid>` or through **Add or Manage Widgets → Install Widget From Local File**. This installs the widget; for the `komaplugin` command on your PATH and the hourly update check, install from source as below.
 
 From source:
 
 ```sh
-git clone https://github.com/columbiafoundry/kOMA-Plugins
+git clone https://github.com/gregoftheweb/kOMA-Plugins
 cd kOMA-Plugins
 bin/install            # widget, CLI in ~/.local/bin, icon, update timer, and places it on your panels
 bin/install --no-place # the same, without touching your panels

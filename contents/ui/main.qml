@@ -5,7 +5,7 @@
     installed plugins (widgets, KWin scripts, effects, decorations, ...) with
     their status. All data comes from the bundled `komaplugin` CLI
     (contents/code/komaplugin), run through Plasma's "executable" data engine.
-    Everything here is local: no network calls.
+    Store updates use KDE's installer on demand; listing reads the local cache.
 */
 pragma ComponentBehavior: Bound
 
@@ -31,6 +31,8 @@ PlasmoidItem {
     readonly property string selfId: "com.columbiafoundry.komaplugins"
     property string page: "installed"   // installed | getnew
     property bool showInstalledOnSuccess: false
+    property var storeUpdate: null
+    property string updateStatus: ""
     readonly property bool showAll: Plasmoid.configuration.showAll
     readonly property int errorCount: plugins.filter(p => p.status === "error").length
     readonly property int activeCount: plugins.filter(p => p.status === "active").length
@@ -89,6 +91,15 @@ PlasmoidItem {
     }
     // enable / disable / use / remove / clone / reload on one plugin
     function act(action, pluginId) {
+        var plugin = plugins.find(p => p.id === pluginId)
+        if (action === "update" && plugin && plugin.update.kind === "store") {
+            if (busyId)
+                return
+            busyId = pluginId
+            updateStatus = "Connecting to KDE Store…"
+            storeUpdate = plugin
+            return
+        }
         var args = [action, pluginId]
         if (action !== "use" && action !== "reload")
             args.push("--yes")
@@ -193,6 +204,33 @@ PlasmoidItem {
     }
 
     fullRepresentation: PlasmaExtras.Representation {
+        id: popup
+
+        Loader {
+            active: root.storeUpdate !== null
+            sourceComponent: StoreUpdater {
+                plugin: root.storeUpdate
+                dialogParent: popup
+                onProgress: message => root.updateStatus = message
+                onCompleted: (success, message) => {
+                    var pluginId = root.storeUpdate.id
+                    root.messageIsError = !success
+                    root.message = message
+                    messageTimer.restart()
+                    root.busyId = ""
+                    root.updateStatus = ""
+                    // Defer destroying the engine until its signal handler returns.
+                    Qt.callLater(function () {
+                        root.storeUpdate = null
+                        if (success)
+                            root.runCli(["finish-update", pluginId], pluginId)
+                        else
+                            root.refresh()
+                    })
+                }
+            }
+        }
+
         Layout.minimumWidth: Kirigami.Units.gridUnit * 24
         Layout.minimumHeight: Kirigami.Units.gridUnit * 20
         Layout.preferredWidth: Kirigami.Units.gridUnit * 34
@@ -461,7 +499,7 @@ PlasmoidItem {
                                 text: "Update"
                                 onClicked: root.act("update", row.modelData.id)
                                 PlasmaComponents.ToolTip {
-                                    text: row.modelData.update && row.modelData.update.kind === "store" ? "Open in the KDE Store to update" : "Update from git"
+                                    text: "Download and install this update"
                                 }
                             }
                             PlasmaComponents.ToolButton {

@@ -1,14 +1,20 @@
 {
   "KPackageStructure": "Plasma/Applet",
   "KPlugin": {
-    "Authors": [{ "Name": "Columbia Foundry", "Email": "" }],
+    "Authors": [
+      {
+        "Name": "Columbia Foundry",
+        "Email": ""
+      }
+    ],
     "Category": "System Information",
     "Description": "Omarchy-style plugin manager for KDE: installed widgets, KWin scripts, effects and decorations at a glance, with their status",
     "Icon": "com.columbiafoundry.komaplugins",
     "Id": "com.columbiafoundry.komaplugins",
     "License": "MIT",
     "Name": "kOMA Plugins",
-    "Version": "0.4"
+    "Version": "0.4.1",
+    "Website": "https://github.com/gregoftheweb/kOMA-Plugins"
   },
   "X-Plasma-API-Minimum-Version": "6.0"
 }

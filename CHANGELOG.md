@@ -2,6 +2,13 @@
 
 All notable changes to kOMA Plugins. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.4.1] - 2026-10-05
+
+### Fixed
+
+- KDE Store updates can be installed inside the Updates and Installed tabs instead of opening a separate store window. Installation progress and errors stay in the widget, and successful updates clear the badge and reload active plugins.
+- The bulk git action is labeled **Update git plugins** and no longer opens store windows for unrelated pending updates.
+
 ## [0.4.0] - 2026-10-04
 
 ### Added
@@ -36,7 +43,8 @@ All notable changes to kOMA Plugins. The format follows [Keep a Changelog](https
 
 - Panel widget and `komaplugin list` / `status`: installed widgets, KWin scripts, effects, window decorations, wallpaper plugins and window switchers, with status and origin.
 
-[0.4.0]: https://github.com/columbiafoundry/kOMA-Plugins/releases/tag/v0.4.0
-[0.3.0]: https://github.com/columbiafoundry/kOMA-Plugins/releases/tag/v0.3.0
-[0.2.0]: https://github.com/columbiafoundry/kOMA-Plugins/releases/tag/v0.2.0
-[0.1.0]: https://github.com/columbiafoundry/kOMA-Plugins/releases/tag/v0.1.0
+[0.4.0]: https://github.com/gregoftheweb/kOMA-Plugins/releases/tag/v0.4.0
+[0.3.0]: https://github.com/gregoftheweb/kOMA-Plugins/releases/tag/v0.3.0
+[0.2.0]: https://github.com/gregoftheweb/kOMA-Plugins/releases/tag/v0.2.0
+[0.1.0]: https://github.com/gregoftheweb/kOMA-Plugins/releases/tag/v0.1.0
+[0.4.1]: https://github.com/gregoftheweb/kOMA-Plugins/releases/tag/v0.4.1

@@ -1,6 +1,6 @@
 /*
     "Updates" page of kOMA Plugins. Shows what the last update check found.
-    The check itself (komaplugin refresh) is the only networked step and runs
+    The check itself (komaplugin refresh) runs
     from a systemd timer at login and hourly; "Check now" runs it on request.
 */
 pragma ComponentBehavior: Bound
@@ -42,10 +42,10 @@ ColumnLayout {
         }
         PlasmaComponents.Button {
             visible: page.host.updatable.some(p => p.update.kind === "git")
-            text: "Update all"
+            text: "Update git plugins"
             icon.name: "update-none"
             enabled: page.host.busyId === ""
-            onClicked: page.host.runCli(["update", "--all", "--yes"], "update-all")
+            onClicked: page.host.runCli(["update", "--all", "--git-only", "--yes"], "update-all")
         }
     }
 
@@ -114,9 +114,14 @@ ColumnLayout {
                     PlasmaComponents.Button {
                         visible: page.host.busyId !== row.modelData.id
                         enabled: page.host.busyId === ""
-                        text: row.modelData.update.kind === "store" ? "Open in store" : "Update"
-                        icon.name: row.modelData.update.kind === "store" ? "get-hot-new-stuff" : "update-none"
+                        text: "Update"
+                        icon.name: "update-none"
                         onClicked: page.host.act("update", row.modelData.id)
+                    }
+                    PlasmaComponents.Label {
+                        visible: page.host.busyId === row.modelData.id && page.host.updateStatus.length > 0
+                        text: page.host.updateStatus
+                        font: Kirigami.Theme.smallFont
                     }
                 }
             }

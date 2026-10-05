@@ -6,6 +6,7 @@ QT_BIN ?= /usr/lib/qt6/bin
 export QT_BIN
 export NPM_CONFIG_LOGLEVEL = warn
 QMLLINT ?= $(QT_BIN)/qmllint
+QMLTEST ?= $(QT_BIN)/qmltestrunner
 VENV := .venv
 PY := $(VENV)/bin
 SHELL_SCRIPTS := bin/install bin/dev-reload scripts/package.sh scripts/qmlformat-check.sh .githooks/pre-commit
@@ -35,6 +36,7 @@ format:  ## apply every formatter
 
 test:
 	$(PY)/pytest
+	QT_QPA_PLATFORM=offscreen $(QMLTEST) -input tests/qml
 
 check: lint test  ## what CI and the pre-commit hook run
 

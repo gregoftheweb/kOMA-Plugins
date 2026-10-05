@@ -18,12 +18,14 @@
   komaplugin reload ID                             reinstall a git/cloned plugin from
                                                    its source folder after edits
   komaplugin refresh [--quiet]                     check the KDE Store and git for
-                                                   updates (the only networked command;
+                                                   updates (a networked command;
                                                    a systemd timer runs it at login and
                                                    hourly) and cache the result
   komaplugin update ID|--all [--yes]               apply updates: git plugins fast-forward
                                                    with a diff first; store plugins open
                                                    KDE's store window on that entry
+  komaplugin finish-update ID                     refresh cached state and reload after
+                                                   KDE's in-widget store installer finishes
 
 Plugins are KDE's own: Plasma widgets, KWin scripts, KWin effects, window
 decorations, wallpaper plugins and window switchers. By default only add-ons
@@ -910,7 +912,7 @@ def git_behind(checkout):
 
 
 def do_refresh(quiet=False):
-    """The only networked command. Results go to the cache; everything else reads it."""
+    """Check upstream versions and cache results; listing never needs the network."""
     import time
 
     recs = discover(include_kde=False)
@@ -960,6 +962,49 @@ def do_refresh(quiet=False):
         for e in errors:
             print(f"  error: {e}", file=sys.stderr)
     return msg
+
+
+def reload_updated(r):
+    if r["status"] == "active" and r["type"] == "widget":
+        subprocess.run(
+            [
+                "systemd-run",
+                "--user",
+                "--quiet",
+                "--collect",
+                "bash",
+                "-c",
+                "sleep 1; systemctl --user restart plasma-plasmashell.service",
+            ],
+            check=False,
+        )
+        return " (panels restart for a moment)"
+    if r["status"] == "active" and r["type"] in ("kwin-script", "effect"):
+        set_kwin_plugin(r, False)
+        set_kwin_plugin(r, True)
+    return ""
+
+
+def do_finish_update(r):
+    """Only clear the cached update after KNewStuff records the installed version."""
+    u = r.get("update")
+    st = r.get("store")
+    if not st:
+        raise Refused("this plugin is not installed from the KDE Store")
+    if u and store_is_newer(
+        st.get("version"),
+        st.get("releaseDate"),
+        {"version": u["latest"] if st.get("version") else "", "changed": u["latest"]},
+    ):
+        raise Refused("KDE Store has not recorded the updated version; the update remains available")
+    cache = load_updates()
+    if r["id"] in cache.get("items", {}):
+        cache["items"][r["id"]]["available"] = False
+        cache["items"][r["id"]]["current"] = st.get("version") or st.get("releaseDate")
+        tmp = UPDATES.with_suffix(".tmp")
+        tmp.write_text(json.dumps(cache, indent=1))
+        tmp.replace(UPDATES)
+    return "updated to " + str(st.get("version") or st.get("releaseDate") or "latest") + reload_updated(r)
 
 
 def do_update(r, yes):
@@ -1012,24 +1057,7 @@ def do_update(r, yes):
     if r["id"] in cache.get("items", {}):
         cache["items"][r["id"]]["available"] = False
         UPDATES.write_text(json.dumps(cache, indent=1))
-    if r["status"] == "active" and r["type"] == "widget":
-        subprocess.run(
-            [
-                "systemd-run",
-                "--user",
-                "--quiet",
-                "--collect",
-                "bash",
-                "-c",
-                "sleep 1; systemctl --user restart plasma-plasmashell.service",
-            ],
-            check=False,
-        )
-        return f"updated to {git_head(checkout)} (panels restart for a moment)"
-    if r["status"] == "active" and r["type"] in ("kwin-script", "effect"):
-        set_kwin_plugin(r, False)
-        set_kwin_plugin(r, True)
-    return f"updated to {git_head(checkout)}"
+    return f"updated to {git_head(checkout)}" + reload_updated(r)
 
 
 def confirm(question, yes):
@@ -1102,7 +1130,10 @@ def main():
     sp = sub.add_parser("update", help="apply an update")
     sp.add_argument("id", nargs="?")
     sp.add_argument("--all", action="store_true")
+    sp.add_argument("--git-only", action="store_true", help="with --all, update only git plugins")
     sp.add_argument("--yes", "-y", action="store_true")
+    sp = sub.add_parser("finish-update", help="refresh state after an in-widget KDE Store update")
+    sp.add_argument("id")
     sp = sub.add_parser("updates", help="what the last check found (no network)")
     sp.add_argument("--json", action="store_true")
     for name, helptext in (
@@ -1171,7 +1202,11 @@ def main():
             if a.cmd == "update" and (a.all or not a.id):
                 if not a.all:
                     raise Refused("give a plugin id or --all")
-                targets = [r for r in discover(include_kde=False) if r.get("update")]
+                targets = [
+                    r
+                    for r in discover(include_kde=False)
+                    if r.get("update") and (not a.git_only or r["update"]["kind"] == "git")
+                ]
                 if not targets:
                     print("no updates in the last check")
                     return
@@ -1186,7 +1221,9 @@ def main():
                 print(msg)
                 return
             r = find_one(a.id)
-            if a.cmd == "update":
+            if a.cmd == "finish-update":
+                msg = do_finish_update(r)
+            elif a.cmd == "update":
                 msg = do_update(r, a.yes)
             elif a.cmd == "clone":
                 msg = do_clone(r, a.yes)
