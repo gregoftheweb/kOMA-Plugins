@@ -16,7 +16,6 @@ import org.kde.plasma.components as PlasmaComponents
 import org.kde.plasma.extras as PlasmaExtras
 import org.kde.plasma.plasmoid
 import org.kde.plasma.core as PlasmaCore
-import org.kde.plasma.plasma5support as P5Support
 
 PlasmoidItem {
     id: root
@@ -56,21 +55,24 @@ PlasmoidItem {
         if (loading)
             return
         loading = true
-        var cmd = "python3 " + shellQuote(cli) + " list --json" + (showAll ? " --all" : "")
-        runner.connectSource(cmd + " # " + Date.now())
-        checkInfo.connectSource("python3 " + shellQuote(cli) + " updates --json # " + Date.now())
+        commands.run("python3 " + shellQuote(cli) + " list --json" + (showAll ? " --all" : ""), function (code, out, err) {
+            root.loading = false
+            try {
+                root.plugins = JSON.parse(out || "[]")
+                root.lastError = ""
+            } catch (e) {
+                root.lastError = (err || String(e)).trim()
+            }
+        })
+        commands.run("python3 " + shellQuote(cli) + " updates --json", function (code, out) {
+            try {
+                root.checkedAt = JSON.parse(out || "{}").checkedAt || ""
+            } catch (e) {}
+        })
     }
 
-    P5Support.DataSource {
-        id: checkInfo
-        engine: "executable"
-        connectedSources: []
-        onNewData: function (source, data) {
-            disconnectSource(source)
-            try {
-                root.checkedAt = JSON.parse(String(data.stdout || "{}")).checkedAt || ""
-            } catch (e) {}
-        }
+    CommandQueue {
+        id: commands
     }
 
     function checkedAtText() {
@@ -86,8 +88,19 @@ PlasmoidItem {
             return
         busyId = busyKey
         confirmId = ""
-        var cmd = "python3 " + shellQuote(cli) + " " + args.map(shellQuote).join(" ")
-        actor.connectSource(cmd + " # " + Date.now())
+        commands.run("python3 " + shellQuote(cli) + " " + args.map(shellQuote).join(" "), function (code, stdout, stderr) {
+            var err = stderr.trim()
+            var out = stdout.trim()
+            root.messageIsError = code !== 0
+            if (!root.messageIsError && root.showInstalledOnSuccess)
+                root.page = "installed"
+            root.showInstalledOnSuccess = false
+            root.message = (root.messageIsError ? err || out : out || err).replace(/^komaplugin: /, "")
+            messageTimer.restart()
+            root.busyId = ""
+            root.loading = false
+            root.refresh()
+        })
     }
     // enable / disable / use / remove / clone / reload on one plugin
     function act(action, pluginId) {
@@ -106,46 +119,10 @@ PlasmoidItem {
         runCli(args, pluginId)
     }
 
-    P5Support.DataSource {
-        id: actor
-        engine: "executable"
-        connectedSources: []
-        onNewData: function (source, data) {
-            disconnectSource(source)
-            var err = String(data.stderr || "").trim()
-            var out = String(data.stdout || "").trim()
-            root.messageIsError = data["exit code"] !== 0
-            if (!root.messageIsError && root.showInstalledOnSuccess)
-                root.page = "installed"
-            root.showInstalledOnSuccess = false
-            root.message = (root.messageIsError ? err || out : out || err).replace(/^komaplugin: /, "")
-            messageTimer.restart()
-            root.busyId = ""
-            root.loading = false
-            root.refresh()
-        }
-    }
-
     Timer {
         id: messageTimer
         interval: 8000
         onTriggered: root.message = ""
-    }
-
-    P5Support.DataSource {
-        id: runner
-        engine: "executable"
-        connectedSources: []
-        onNewData: function (source, data) {
-            disconnectSource(source)
-            root.loading = false
-            try {
-                root.plugins = JSON.parse(String(data.stdout || "[]"))
-                root.lastError = ""
-            } catch (e) {
-                root.lastError = String(data.stderr || e).trim()
-            }
-        }
     }
 
     Timer {

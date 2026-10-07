@@ -2,6 +2,12 @@
 
 All notable changes to kOMA Plugins. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.4.2] - 2026-10-07
+
+### Fixed
+
+- plasmashell no longer slows down the longer it runs. Commands ran under a new name every time (`cmd # Date.now()`), and Plasma's command engine never forgets a name: every widget's command runner on the engine rebuilds a property for each name ever used on every removal, so CPU and memory grew all day until plasmashell pinned a core. Commands now keep one fixed name and run through the shared `CommandQueue`, which serializes repeat runs of the same command.
+
 ## [0.4.1] - 2026-10-05
 
 ### Fixed

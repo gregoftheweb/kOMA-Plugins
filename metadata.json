@@ -13,7 +13,7 @@
     "Id": "com.columbiafoundry.komaplugins",
     "License": "MIT",
     "Name": "kOMA Plugins",
-    "Version": "0.4.1",
+    "Version": "0.4.2",
     "Website": "https://github.com/gregoftheweb/kOMA-Plugins"
   },
   "X-Plasma-API-Minimum-Version": "6.0"
