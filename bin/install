@@ -6,8 +6,13 @@
 #   install --no-place install/upgrade only
 set -euo pipefail
 dir=$(cd "$(dirname "$0")/.." && pwd)
-kpackagetool6 --type Plasma/Applet --upgrade "$dir" >/dev/null 2>&1 \
-  || kpackagetool6 --type Plasma/Applet --install "$dir"
+# install only what `make package` ships (plus files not yet committed), never dev tooling
+pkg=$(mktemp -d)
+trap 'rm -rf "$pkg"' EXIT
+(cd "$dir" && git ls-files -z --cached --others --exclude-standard -- metadata.json contents LICENSE |
+  while IFS= read -r -d "" f; do if [ -e "$f" ]; then cp --parents "$f" "$pkg"; fi; done)
+kpackagetool6 --type Plasma/Applet --upgrade "$pkg" >/dev/null 2>&1 ||
+  kpackagetool6 --type Plasma/Applet --install "$pkg"
 mkdir -p "$HOME/.local/bin"
 icons="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor/scalable/apps"
 mkdir -p "$icons" && cp "$dir/contents/icons/koma.svg" "$icons/com.columbiafoundry.komaplugins.svg"
