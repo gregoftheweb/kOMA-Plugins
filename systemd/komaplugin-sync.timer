@@ -1,0 +1,11 @@
+[Unit]
+Description=kOMA Plugins store catalog copy, twice a day
+
+[Timer]
+OnCalendar=*-*-* 07,19:00:00
+# catch up after the machine was off or asleep at those times
+Persistent=true
+RandomizedDelaySec=15min
+
+[Install]
+WantedBy=timers.target

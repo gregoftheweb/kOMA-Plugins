@@ -133,4 +133,75 @@ Item {
             compare(finishedSpy.signalArguments[0][0], true)
         }
     }
+    TestCase {
+        name: "StoreInstaller"
+        when: windowShown
+        property var installer
+        SignalSpy {
+            id: installSpy
+            signalName: "completed"
+        }
+
+        function init() {
+            installer = createTemporaryObject(updaterFactory, root, {
+                plugin: {
+                    id: "store:12",
+                    name: "New widget",
+                    fresh: true,
+                    update: {
+                        catalog: "plasmoids",
+                        storeId: "12"
+                    }
+                },
+                dialogParent: root,
+                engineComponent: fakeEngine
+            })
+            installSpy.target = installer
+            installSpy.clear()
+            installer.engine.signalProvidersLoaded()
+        }
+
+        function test_fetches_only_that_entry() {
+            compare(installer.engine.filter, 0)
+            compare(installer.engine.detailsRequests, 1)
+            compare(installer.entry.uniqueId, "12")
+            installer.engine.signalEntriesLoaded([
+                {
+                    providerId: "api.kde-look.org",
+                    uniqueId: "99",
+                    status: NewStuff.Entry.Downloadable
+                }
+            ])
+            compare(installer.entry.uniqueId, "12")
+            compare(installer.engine.detailsRequests, 1)
+        }
+
+        function test_installs_downloadable_entry() {
+            installer.engine.signalEntryEvent({
+                providerId: "api.kde-look.org",
+                uniqueId: "12",
+                status: NewStuff.Entry.Downloadable
+            }, NewStuff.Entry.DetailsLoadedEvent)
+            compare(installer.engine.installs, 1)
+            compare(installSpy.count, 0)
+            installer.engine.signalEntryEvent({
+                providerId: "api.kde-look.org",
+                uniqueId: "12",
+                status: NewStuff.Entry.Installed
+            }, NewStuff.Entry.StatusChangedEvent)
+            compare(installSpy.count, 1)
+            compare(installSpy.signalArguments[0][0], true)
+            compare(installSpy.signalArguments[0][1], "Installed New widget")
+        }
+
+        function test_already_installed_needs_no_download() {
+            installer.engine.signalEntryEvent({
+                providerId: "api.kde-look.org",
+                uniqueId: "12",
+                status: NewStuff.Entry.Installed
+            }, NewStuff.Entry.DetailsLoadedEvent)
+            compare(installer.engine.installs, 0)
+            compare(installSpy.signalArguments[0][1], "New widget is already installed")
+        }
+    }
 }

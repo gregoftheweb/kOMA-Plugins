@@ -2,6 +2,17 @@
 
 All notable changes to kOMA Plugins. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.8.0] - 2026-10-14
+
+### Added
+
+- Get new browses the KDE Store from a local copy of its catalog: filter by plugin type, search as you type, sort by downloads, recent updates, rating or name, and install in the widget with KDE's own installer. KDE's live store window is still available from the page.
+- `komaplugin sync` copies the store catalog and small thumbnails to `~/.cache/komaplugin/`; the `komaplugin-sync.timer` systemd user timer runs it at 7:00 and 19:00. `komaplugin store` searches the copy from the command line. Without the timer (a KDE Store install), the Get new tab refreshes a copy older than 12 hours itself.
+
+### Changed
+
+- Rows in the Installed and Get new lists keep their icon and buttons aligned to the top, so hovering to expand a description no longer makes them jump.
+
 ## [0.4.2] - 2026-10-07
 
 ### Fixed
@@ -54,3 +65,5 @@ All notable changes to kOMA Plugins. The format follows [Keep a Changelog](https
 [0.2.0]: https://github.com/gregoftheweb/kOMA-Plugins/releases/tag/v0.2.0
 [0.1.0]: https://github.com/gregoftheweb/kOMA-Plugins/releases/tag/v0.1.0
 [0.4.1]: https://github.com/gregoftheweb/kOMA-Plugins/releases/tag/v0.4.1
+[0.4.2]: https://github.com/gregoftheweb/kOMA-Plugins/releases/tag/v0.4.2
+[0.8.0]: https://github.com/gregoftheweb/kOMA-Plugins/releases/tag/v0.8.0

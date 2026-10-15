@@ -1,0 +1,8 @@
+[Unit]
+Description=kOMA Plugins: copy the KDE Store catalog to the local cache
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/komaplugin sync --quiet
+Nice=10

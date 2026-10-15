@@ -17,11 +17,15 @@ mkdir -p "$HOME/.local/bin"
 icons="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor/scalable/apps"
 mkdir -p "$icons" && cp "$dir/contents/icons/koma.svg" "$icons/com.columbiafoundry.komaplugins.svg"
 ln -sf "$dir/contents/code/komaplugin" "$HOME/.local/bin/komaplugin"
-# Update checks: the only network use, at login and then hourly (systemd user timer)
+# Network use runs on systemd user timers: update checks at login and hourly,
+# and a copy of the KDE Store catalog twice a day for the Get new tab
 units="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 mkdir -p "$units"
-cp "$dir/systemd/komaplugin-refresh.service" "$dir/systemd/komaplugin-refresh.timer" "$units/"
+for u in komaplugin-refresh komaplugin-sync; do cp "$dir/systemd/$u.service" "$dir/systemd/$u.timer" "$units/"; done
 systemctl --user daemon-reload
-systemctl --user enable --now komaplugin-refresh.timer >/dev/null 2>&1
-echo "kOMA Plugins installed; CLI linked at ~/.local/bin/komaplugin; update check timer on"
+systemctl --user enable --now komaplugin-refresh.timer komaplugin-sync.timer >/dev/null 2>&1
+# first install: fetch the store catalog now, in the background (about a minute)
+[[ -f "${XDG_CACHE_HOME:-$HOME/.cache}/komaplugin/store.json" ]] ||
+  systemctl --user start --no-block komaplugin-sync.service
+echo "kOMA Plugins installed; CLI linked at ~/.local/bin/komaplugin; update check and store catalog timers on"
 [[ "${1:-}" == "--no-place" ]] || "$dir/contents/code/komaplugin" enable com.columbiafoundry.komaplugins --yes

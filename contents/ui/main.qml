@@ -5,7 +5,8 @@
     installed plugins (widgets, KWin scripts, effects, decorations, ...) with
     their status. All data comes from the bundled `komaplugin` CLI
     (contents/code/komaplugin), run through Plasma's "executable" data engine.
-    Store updates use KDE's installer on demand; listing reads the local cache.
+    Store updates and installs use KDE's installer on demand; listing and the
+    store browser read local caches (`komaplugin sync` copies the store catalog).
 */
 pragma ComponentBehavior: Bound
 
@@ -38,6 +39,7 @@ PlasmoidItem {
     readonly property var updatable: plugins.filter(p => !!p.update)
     readonly property int updateCount: updatable.length
     property string checkedAt: ""        // when the hourly update check last ran
+    property int storeGeneration: 0      // bumped when the store catalog or installs change
     readonly property string cli: decodeURIComponent(Qt.resolvedUrl("../code/komaplugin").toString().replace("file://", ""))
 
     switchWidth: Kirigami.Units.gridUnit * 16
@@ -82,6 +84,28 @@ PlasmoidItem {
         return "last checked " + Qt.formatDateTime(d, d.toDateString() === new Date().toDateString() ? "h:mm AP" : "MMM d, h:mm AP")
     }
 
+    // Read-only CLI call whose output a page parses itself (no busy state, no banner)
+    function cliOutput(args, callback) {
+        commands.run("python3 " + shellQuote(cli) + " " + args.map(shellQuote).join(" "), callback)
+    }
+
+    // Install a store entry from the local catalog with KDE's installer
+    function installFromStore(item) {
+        if (busyId)
+            return
+        busyId = "store:" + item.storeId
+        updateStatus = "Connecting to KDE Store…"
+        storeUpdate = {
+            id: busyId,
+            name: item.name,
+            fresh: true,
+            update: {
+                catalog: item.catalog,
+                storeId: item.storeId
+            }
+        }
+    }
+
     // Every action is a CLI call that prints one line; busyKey marks what's running.
     function runCli(args, busyKey) {
         if (busyId)
@@ -99,6 +123,8 @@ PlasmoidItem {
             messageTimer.restart()
             root.busyId = ""
             root.loading = false
+            if (args[0] === "sync" || args[0] === "remove")
+                root.storeGeneration++
             root.refresh()
         })
     }
@@ -191,6 +217,7 @@ PlasmoidItem {
                 onProgress: message => root.updateStatus = message
                 onCompleted: (success, message) => {
                     var pluginId = root.storeUpdate.id
+                    var fresh = !!root.storeUpdate.fresh
                     root.messageIsError = !success
                     root.message = message
                     messageTimer.restart()
@@ -199,7 +226,10 @@ PlasmoidItem {
                     // Defer destroying the engine until its signal handler returns.
                     Qt.callLater(function () {
                         root.storeUpdate = null
-                        if (success)
+                        if (fresh) {
+                            root.storeGeneration++
+                            root.refresh()
+                        } else if (success)
                             root.runCli(["finish-update", pluginId], pluginId)
                         else
                             root.refresh()
@@ -374,11 +404,13 @@ PlasmoidItem {
                     width: ListView.view.width - ListView.view.leftMargin - ListView.view.rightMargin
                     hoverEnabled: true
 
+                    // Everything stays top-aligned, so nothing moves when hovering expands the description
                     contentItem: RowLayout {
                         spacing: Kirigami.Units.largeSpacing
 
-                        Rectangle {  // status dot
-                            Layout.alignment: Qt.AlignVCenter
+                        Rectangle {  // status dot, centered on the icon
+                            Layout.alignment: Qt.AlignTop
+                            Layout.topMargin: (Kirigami.Units.iconSizes.medium - implicitHeight) / 2
                             implicitWidth: Kirigami.Units.smallSpacing * 2.5
                             implicitHeight: implicitWidth
                             radius: width / 2
@@ -388,6 +420,7 @@ PlasmoidItem {
                         }
 
                         Kirigami.Icon {
+                            Layout.alignment: Qt.AlignTop
                             Layout.preferredWidth: Kirigami.Units.iconSizes.medium
                             Layout.preferredHeight: Kirigami.Units.iconSizes.medium
                             source: row.modelData.icon || ({
@@ -401,6 +434,7 @@ PlasmoidItem {
                         }
 
                         ColumnLayout {
+                            Layout.alignment: Qt.AlignTop
                             Layout.fillWidth: true
                             spacing: 0
                             RowLayout {
@@ -438,6 +472,7 @@ PlasmoidItem {
                         }
 
                         PlasmaComponents.BusyIndicator {
+                            Layout.alignment: Qt.AlignTop
                             visible: root.busyId === row.modelData.id
                             running: visible
                             Layout.preferredWidth: Kirigami.Units.iconSizes.medium
@@ -446,6 +481,7 @@ PlasmoidItem {
 
                         RowLayout {  // actions
                             id: actionRow
+                            Layout.alignment: Qt.AlignTop
                             readonly property var acts: row.modelData.id === root.selfId ? [] : (row.modelData.actions || [])
                             visible: root.busyId !== row.modelData.id && root.confirmId !== row.modelData.id && (row.hovered || row.activeFocus) && acts.length > 0
                             spacing: 0
@@ -509,6 +545,7 @@ PlasmoidItem {
                         }
 
                         RowLayout {  // inline "really remove?"
+                            Layout.alignment: Qt.AlignTop
                             visible: root.confirmId === row.modelData.id
                             spacing: Kirigami.Units.smallSpacing
                             PlasmaComponents.Label {

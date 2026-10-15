@@ -9,14 +9,18 @@ kOMA Plugins brings [Omarchy](https://omarchy.org)'s plugin manager to KDE Plasm
 - **Installed**: everything you added, by type, with a status dot (active, off, or failed to load), version and where it came from (KDE Store, git, a local copy, or a distro package). Switch to **All** to include what ships with KDE.
 - **Turn plugins on and off**: hover a row. Enabling a widget places it on every panel, left of the system tray. Decorations and window switchers get **Use**.
 - **Remove** asks first, turns the plugin off, and moves your copy to `~/.local/share/komaplugin/removed/` instead of deleting it. Plugins installed by your distro are left to your package manager.
-- **Get new**: KDE's store window for each plugin type, or **Add from git**: paste a repo URL and kOMA finds the plugin (also in subfolders like `package/`), checks it, and installs it switched off.
+- **Get new**: browse the KDE Store from a local copy of its catalog: pick a plugin type, search as you type, sort by downloads, recent updates, rating or name, and press **Install**. Nothing waits on the network until you install, which uses KDE's own installer so the plugin is tracked like any store install. KDE's live store window is still a click away. Or **From git**: paste a repo URL and kOMA finds the plugin (also in subfolders like `package/`), checks it, and installs it switched off.
 - **Updates**: press **Update** to download and install a KDE Store update inside the widget. KDE tracks the installed version, and active widgets reload with a brief panel restart. Git plugins update in place (with a rollback if the new version fails checks); **Update git plugins** applies all pending git updates.
 - **Clone** any QML plugin to your own copy, edit it, and `komaplugin reload` it.
 - **Follows your theme**: the icon and status colors use your color scheme's highlight color.
 
 ## Privacy and network use
 
-kOMA Plugins checks for updates with `komaplugin refresh`. A systemd user timer runs it 2 minutes after login and then once an hour; you can also press **Check now**. It asks the KDE Store API about plugins you installed from the store and runs `git fetch` for plugins you added from git. Results are cached, so listing plugins needs no network access. Downloading updates, browsing the store, or adding from git happens only when you ask.
+kOMA Plugins checks for updates with `komaplugin refresh`. A systemd user timer runs it 2 minutes after login and then once an hour; you can also press **Check now**. It asks the KDE Store API about plugins you installed from the store and runs `git fetch` for plugins you added from git. Results are cached, so listing plugins needs no network access.
+
+`komaplugin sync` copies the KDE Store's catalog for the six plugin types (about 1,400 entries) and small thumbnails (about 25 MB) to `~/.cache/komaplugin/`. A second timer runs it at 7:00 and 19:00 (or at the next start if the machine was off), and the Get new tab has a button to run it now. Without the timer (installed from the KDE Store), opening the Get new tab refreshes a copy older than 12 hours. Browsing and searching read only that copy.
+
+Downloading updates or new plugins, opening KDE's store window, or adding from git happens only when you ask.
 
 ## Requirements
 
@@ -24,7 +28,7 @@ kOMA Plugins checks for updates with `komaplugin refresh`. A systemd user timer 
 - Python 3.11 or newer (standard library only)
 - `kpackagetool6`, `qdbus6`, `kwriteconfig6`, `knewstuff-dialog6` (part of a normal Plasma install; `qdbus6` is in `qt6-tools` on Arch)
 - `git`, for adding plugins from git
-- systemd user session, for the hourly update check
+- systemd user session, for the hourly update check and twice-daily store copy
 
 ## Install
 
@@ -48,6 +52,8 @@ komaplugin enable | disable ID                   turn a plugin on or off
 komaplugin use ID                                make a decoration or window switcher current
 komaplugin remove ID                             turn off and move your copy aside
 komaplugin browse [TYPE]                         open the KDE Store for a plugin type
+komaplugin sync                                  copy the KDE Store catalog locally (networked)
+komaplugin store [TYPE] [SEARCH...] [--json]     search that local copy
 komaplugin add URL [--path DIR] [--enable]       install a plugin from a git repo
 komaplugin clone ID | reload ID                  copy a plugin to edit / reinstall after edits
 komaplugin refresh                               check for updates (the only networked command)

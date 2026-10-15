@@ -12,6 +12,10 @@
   komaplugin remove ID [--yes]                     turn off, then move your copy to
                                                    ~/.local/share/komaplugin/removed/
   komaplugin browse [TYPE]                         open the KDE Store for a plugin type
+  komaplugin sync [--quiet]                        copy the KDE Store catalog and thumbnails
+                                                   to the local cache (networked; a systemd
+                                                   timer runs it twice a day)
+  komaplugin store [TYPE] [SEARCH...] [--json]     search the local catalog (no network)
   komaplugin add URL [--path DIR] [--enable] [--yes]
                                                    install a plugin from a git repo
   komaplugin clone ID [--yes]                      copy a plugin to your own id to edit
@@ -78,6 +82,11 @@ SOURCES = STATE_DIR / "sources.json"
 CACHE_DIR = Path(os.environ.get("XDG_CACHE_HOME") or HOME / ".cache") / "komaplugin"
 UPDATES = CACHE_DIR / "updates.json"
 OCS_API = "https://api.kde-look.org/ocs/v1/content/data/"
+# Local copy of the store catalog, refreshed by `komaplugin sync` (timer: twice a day)
+CATALOG = CACHE_DIR / "store.json"
+THUMBS = CACHE_DIR / "thumbs"
+# Store previews are 770x540 (~400 KB); the image cache serves any size from the same path
+THUMB_SIZE = "160x100-2"
 KDE_GROUPS = {"plasma", "kf6", "kde-applications", "kde-system", "kde-utilities"}
 
 
@@ -964,6 +973,168 @@ def do_refresh(quiet=False):
     return msg
 
 
+def ocs_get(path, params=None):
+    import urllib.parse
+    import urllib.request
+
+    url = OCS_API.rsplit("data/", 1)[0] + path + ("?" + urllib.parse.urlencode(params) if params else "")
+    req = urllib.request.Request(url, headers={"User-Agent": "komaplugin"})
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        return ET.fromstring(resp.read())
+
+
+def knsrc_categories(knsrc):
+    """Category names a KDE store window shows, from its .knsrc file."""
+    for d in [DATA_HOME, *DATA_DIRS]:
+        f = d / "knsrcfiles" / knsrc
+        if f.is_file():
+            groups = read_kconfig(f)  # KWin's files still use the old [KNewStuff3] group
+            cats = (groups.get("KNewStuff") or groups.get("KNewStuff3") or {}).get("Categories", "")
+            return [c.strip() for c in cats.split(",") if c.strip()]
+    return []
+
+
+def plain_text(s, limit=400):
+    """Store descriptions are HTML or BBCode; keep the words."""
+    import html
+
+    s = re.sub(r"<[^>]+>|\[/?[a-z*]+(=[^\]]*)?\]", " ", s or "", flags=re.I)
+    s = re.sub(r"\s+", " ", html.unescape(s)).strip()
+    return s if len(s) <= limit else s[: limit - 1].rsplit(" ", 1)[0] + "…"
+
+
+def catalog_item(c, ptype):
+    def t(tag):
+        return (c.findtext(tag) or "").strip()
+
+    pic = t("smallpreviewpic1") or t("previewpic1")
+    thumb_url = re.sub(r"/cache/\d+x\d+(-\d+)?/", f"/cache/{THUMB_SIZE}/", pic) if "/cache/" in pic else ""
+    return {
+        "storeId": t("id"),
+        "name": t("name"),
+        "type": ptype,
+        "catalog": KNSRC[ptype].removesuffix(".knsrc"),
+        "category": t("typename"),
+        "author": t("personid"),
+        "version": t("version"),
+        "changed": t("changed")[:10],
+        "created": t("created")[:10],
+        "downloads": int(t("downloads") or 0),
+        "score": int(t("score") or 0),
+        "summary": plain_text(t("summary") or t("description")),
+        "page": t("detailpage"),
+        "thumbUrl": thumb_url,
+    }
+
+
+def fetch_thumbs(items, old):
+    """Download thumbnails that are missing or whose picture changed; drop unused ones."""
+    import urllib.request
+    from concurrent.futures import ThreadPoolExecutor
+
+    THUMBS.mkdir(parents=True, exist_ok=True)
+    keep = set()
+
+    def get(it):
+        ext = Path(it["thumbUrl"]).suffix.lower()
+        dest = THUMBS / (it["storeId"] + (ext if ext in (".png", ".jpg", ".jpeg", ".gif", ".webp") else ".png"))
+        keep.add(dest.name)
+        if dest.exists() and old.get(it["storeId"]) == it["thumbUrl"]:
+            return 0
+        try:
+            req = urllib.request.Request(it["thumbUrl"], headers={"User-Agent": "komaplugin"})
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                tmp = dest.with_suffix(dest.suffix + ".part")
+                tmp.write_bytes(resp.read())
+                tmp.replace(dest)
+            return 1
+        except Exception:  # a missing picture just shows the type icon
+            keep.discard(dest.name)
+            return 0
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        fetched = sum(pool.map(get, [it for it in items if it["thumbUrl"]]))
+    for f in THUMBS.iterdir():
+        if f.name not in keep:
+            f.unlink(missing_ok=True)
+    return fetched
+
+
+def do_sync(quiet=False):
+    """Copy the KDE Store catalog for every plugin type into the local cache."""
+    import time
+
+    started = time.monotonic()
+    names = {c.findtext("name"): c.findtext("id") for c in ocs_get("categories").iter("category")}
+    items, errors = [], []
+    for ptype, knsrc in KNSRC.items():
+        ids = [names[n] for n in knsrc_categories(knsrc) if n in names]
+        if not ids:
+            errors.append(f"{ptype}: no store category for {knsrc}")
+            continue
+        try:
+            got = []
+            for page in range(50):  # 100 per page; the largest catalog is under 1,000
+                root = ocs_get("data", {"categories": ",".join(ids), "pagesize": 100, "page": page, "sortmode": "new"})
+                batch = root.findall("data/content")
+                got += [catalog_item(c, ptype) for c in batch]
+                total = int(root.findtext("meta/totalitems") or 0)
+                if not batch or (page + 1) * 100 >= total:
+                    break
+            items += got
+        except Exception as e:  # keep what the other types fetched
+            errors.append(f"{ptype}: {e}")
+    try:
+        prev = json.loads(CATALOG.read_text())
+    except (OSError, ValueError):
+        prev = {}
+    if errors and prev.get("items"):
+        # a partial fetch must not drop a whole type from the catalog
+        failed = {e.split(":", 1)[0] for e in errors}
+        items += [it for it in prev["items"] if it["type"] in failed]
+    old_thumbs = {it["storeId"]: it.get("thumbUrl") for it in prev.get("items", [])}
+    fetched = fetch_thumbs(items, old_thumbs)
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    data = {"syncedAt": time.strftime("%Y-%m-%dT%H:%M:%S"), "items": items, "errors": errors}
+    tmp = CATALOG.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data))
+    tmp.replace(CATALOG)
+    if not quiet:
+        for e in errors:
+            print(f"  error: {e}", file=sys.stderr)
+    return f"store catalog: {len(items)} plugin(s), {fetched} new thumbnail(s) in {time.monotonic() - started:.0f}s" + (
+        f", {len(errors)} error(s)" if errors else ""
+    )
+
+
+def load_catalog(ptype=None, search=None):
+    """The local store catalog, marked with what KDE's registry says is installed."""
+    try:
+        data = json.loads(CATALOG.read_text())
+    except (OSError, ValueError):
+        return {"syncedAt": "", "items": []}
+    installed = {(e["catalog"], e["storeId"]): e for e in store_registry().values()}
+    words = (search or "").lower().split()
+    thumbs = {f.stem: f for f in THUMBS.iterdir()} if THUMBS.is_dir() else {}
+    items = []
+    for it in data.get("items", []):
+        if ptype and it["type"] != ptype:
+            continue
+        if words and not all(w in f"{it['name']} {it['author']} {it['summary']}".lower() for w in words):
+            continue
+        have = installed.get((it["catalog"], it["storeId"]))
+        thumb = thumbs.get(it["storeId"])
+        items.append(
+            {
+                **it,
+                "installed": have is not None,
+                "installedVersion": (have or {}).get("version") or (have or {}).get("releaseDate") or "",
+                "thumb": str(thumb) if thumb else "",
+            }
+        )
+    return {"syncedAt": data.get("syncedAt", ""), "items": items, "errors": data.get("errors", [])}
+
+
 def reload_updated(r):
     if r["status"] == "active" and r["type"] == "widget":
         subprocess.run(
@@ -1120,6 +1291,12 @@ def main():
             sp.add_argument("--no-restart", action="store_true", help="widgets: don't restart panels to position it")
     sp = sub.add_parser("browse", help="open the KDE Store for a plugin type")
     sp.add_argument("type", nargs="?", default="widget", choices=list(KNSRC))
+    sp = sub.add_parser("sync", help="copy the KDE Store catalog to the local cache (networked)")
+    sp.add_argument("--quiet", "-q", action="store_true")
+    sp = sub.add_parser("store", help="search the local store catalog (no network)")
+    sp.add_argument("type", nargs="?", choices=list(KNSRC))
+    sp.add_argument("search", nargs="*")
+    sp.add_argument("--json", action="store_true")
     sp = sub.add_parser("add", help="install a plugin from a git repo")
     sp.add_argument("url")
     sp.add_argument("--path", help="folder inside the repo holding the plugin")
@@ -1185,6 +1362,22 @@ def main():
         try:
             if a.cmd == "refresh":
                 print(do_refresh(a.quiet))
+                return
+            if a.cmd == "sync":
+                print(do_sync(a.quiet))
+                return
+            if a.cmd == "store":
+                data = load_catalog(a.type, " ".join(a.search))
+                if a.json:
+                    json.dump(data, sys.stdout)
+                    print()
+                elif not data["syncedAt"]:
+                    raise Refused("no store catalog yet (run: komaplugin sync)")
+                else:
+                    print(f"catalog from {data['syncedAt']}: {len(data['items'])} match(es)")
+                    for i in sorted(data["items"], key=lambda i: -i["downloads"]):
+                        mark = "installed" if i["installed"] else ""
+                        print(f"  {i['storeId']:>8}  {i['name'][:40]:<40} {i['type']:<15} {i['downloads']:>7}  {mark}")
                 return
             if a.cmd == "updates":
                 data = load_updates()
